@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "3ps-v3",
+    "slug": "3ps-v3",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "config": {
+        "googleMapsApiKey": "AIzaSyD6YRAdn3f001AR7t-rPp54RTS0lDxRhlM"
+      }
+    },
+    "android": {
+      "softwareKeyboardLayoutMode": "pan",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyD6YRAdn3f001AR7t-rPp54RTS0lDxRhlM"
+        }
+      },
+      "package": "com.ryjie.tsapp"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f90cd92c-98b8-4c51-9216-dd5997d1bded"
+      }
+    },
+    "owner": "ryjie",
+    "plugins": [
+      "@react-native-community/datetimepicker"
+    ]
+  }
+}
