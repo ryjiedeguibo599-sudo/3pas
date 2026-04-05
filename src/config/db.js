@@ -1,6 +1,3 @@
-// 📁 src/config/db.js
-// PALITAN ang luma mong db.js — para sa PostgreSQL
-
 const { Pool } = require('pg')
 
 const pool = new Pool({
@@ -9,11 +6,11 @@ const pool = new Pool({
   database: process.env.DB_NAME     || '3ps_db',
   user:     process.env.DB_USER     || 'postgres',
   password: process.env.DB_PASS     || '',
-  // Para sa production (optional):
-  // ssl: { rejectUnauthorized: false }
+  ssl: process.env.DB_HOST && process.env.DB_HOST !== 'localhost' 
+    ? { rejectUnauthorized: false } 
+    : false
 })
 
-// Test connection on startup
 pool.connect((err, client, release) => {
   if (err) {
     console.error('❌ PostgreSQL connection error:', err.message)
@@ -23,8 +20,6 @@ pool.connect((err, client, release) => {
   }
 })
 
-// Helper: para consistent ang query syntax sa buong app
-// Paggamit: const { rows } = await db.query('SELECT ...', [params])
 module.exports = {
   query: (text, params) => pool.query(text, params),
   pool,
