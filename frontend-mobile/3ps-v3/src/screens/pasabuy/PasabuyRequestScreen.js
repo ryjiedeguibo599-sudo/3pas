@@ -1,31 +1,34 @@
-// Screen 2: PasabuyRequestScreen.js — Item Request Details
-// FIXED: keyboard auto-dismiss on Android
-// ROOT CAUSE FIX: Moved <Field> component OUTSIDE the parent component
-// so React doesn't treat it as a new component type on every render.
-
 import React, { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  SafeAreaView, Platform, TextInput, ScrollView,
+  Platform, TextInput, ScrollView,
   Keyboard, BackHandler,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
-const GREEN    = '#059669'
-const GREEN_BG = '#ecfdf5'
-const GREEN_DK = '#064e3b'
-const RED      = '#ef4444'
+const C = {
+  primary:   '#2563EB',
+  primaryLt: '#EFF6FF',
+  primaryMd: '#BFDBFE',
+  text:      '#0F172A',
+  textSub:   '#64748B',
+  textHint:  '#94A3B8',
+  border:    '#E2E8F0',
+  bg:        '#F8FAFF',
+  white:     '#FFFFFF',
+  red:       '#EF4444',
+}
 
-// ✅ FIX: Field is defined OUTSIDE PasabuyRequestScreen.
-// Previously it was inside the component, which caused React to treat it
-// as a brand-new component type on every re-render (every keystroke),
-// unmounting and remounting it — which dismissed the keyboard instantly.
+const STEPS = ['Location', 'Details', 'Review', 'Confirm']
+
+// Field must be OUTSIDE the parent component — prevents keyboard dismiss on each keystroke
 const Field = ({ label, required, error, children }) => (
-  <View style={styles.fieldGroup}>
-    <Text style={styles.fieldLabel}>
-      {label}{required && <Text style={styles.required}> *</Text>}
+  <View style={s.fieldGroup}>
+    <Text style={s.fieldLabel}>
+      {label}{required && <Text style={{ color: C.red }}> *</Text>}
     </Text>
     {children}
-    {!!error && <Text style={styles.errorText}>{error}</Text>}
+    {!!error && <Text style={s.errorText}>{error}</Text>}
   </View>
 )
 
@@ -45,14 +48,12 @@ export default function PasabuyRequestScreen({ navigation, route }) {
   const budgetRef   = useRef(null)
   const notesRef    = useRef(null)
 
-  // Track keyboard visibility
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true))
     const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false))
     return () => { show.remove(); hide.remove() }
   }, [])
 
-  // Android back button — dismiss keyboard first
   useEffect(() => {
     const onBack = () => {
       if (keyboardVisible) { Keyboard.dismiss(); return true }
@@ -64,11 +65,11 @@ export default function PasabuyRequestScreen({ navigation, route }) {
 
   const validate = () => {
     const e = {}
-    if (!itemName.trim())  e.itemName = 'Kinakailangan ang pangalan ng item.'
+    if (!itemName.trim()) e.itemName = 'Item name is required.'
     if (!quantity.trim() || isNaN(Number(quantity)) || Number(quantity) < 1)
-      e.quantity = 'Ilagay ang tamang dami.'
+      e.quantity = 'Please enter a valid quantity.'
     if (!budget.trim() || isNaN(Number(budget)) || Number(budget) <= 0)
-      e.budget = 'Ilagay ang tamang budget.'
+      e.budget = 'Please enter a valid budget.'
     return e
   }
 
@@ -81,72 +82,63 @@ export default function PasabuyRequestScreen({ navigation, route }) {
       deliveryAddress, coordinates,
       itemName: itemName.trim(),
       quantity: Number(quantity),
-      store:    store.trim() || 'Hindi tinukoy',
+      store:    store.trim() || 'Not specified',
       budget:   Number(budget),
       notes:    notes.trim(),
     })
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={s.safe}>
 
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => { Keyboard.dismiss(); setTimeout(() => navigation.goBack(), 50) }}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Text style={styles.backIcon}>‹</Text>
-        </TouchableOpacity>
-        <View style={styles.logoRow}>
-          <View style={styles.logoIcon}><Text style={{ fontSize: 16 }}>🛒</Text></View>
-          <Text style={styles.title}>Detalye ng Order</Text>
-        </View>
-        <View style={{ width: 36 }} />
-      </View>
-
-      {/* ── Step indicator ── */}
-      <View style={styles.stepRow}>
-        {['Lokasyon', 'Detalye', 'Review', 'Kumpirma'].map((label, i) => (
-          <View key={i} style={styles.stepItem}>
-            <View style={[
-              styles.stepDot,
-              i < 1   && styles.stepDotDone,
-              i === 1 && styles.stepDotActive,
-            ]}>
-              <Text style={[styles.stepNum, i <= 1 && styles.stepNumDone]}>
-                {i < 1 ? '✓' : i + 1}
-              </Text>
+      {/* Step bar */}
+      <View style={s.stepBar}>
+        {STEPS.map((label, i) => (
+          <React.Fragment key={i}>
+            <View style={s.stepItem}>
+              <View style={[s.stepDot, i <= 1 && s.stepDotActive]}>
+                <Text style={[s.stepNum, i <= 1 && s.stepNumActive]}>
+                  {i < 1 ? '✓' : i + 1}
+                </Text>
+              </View>
+              <Text style={[s.stepLabel, i === 1 && s.stepLabelActive]}>{label}</Text>
             </View>
-            <Text style={[styles.stepLabel, i === 1 && styles.stepLabelActive]}>{label}</Text>
-          </View>
+            {i < STEPS.length - 1 && <View style={s.stepConnector} />}
+          </React.Fragment>
         ))}
       </View>
 
-      {/* ── Address chip ── */}
-      <View style={styles.addressChip}>
-        <Text style={styles.addressChipIcon}>📍</Text>
-        <Text style={styles.addressChipText} numberOfLines={1}>{deliveryAddress}</Text>
+      {/* Nav bar */}
+      <View style={s.navBar}>
+        <TouchableOpacity
+          style={s.backBtn}
+          onPress={() => { Keyboard.dismiss(); setTimeout(() => navigation.goBack(), 50) }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text style={s.backIcon}>‹</Text>
+        </TouchableOpacity>
+        <View style={{ flex: 1 }} />
       </View>
 
-      {/* ── Form ──
-          ✅ KEY FIX: NO KeyboardAvoidingView on Android
-          It causes the auto-dismiss loop on Android.
-          softwareKeyboardLayoutMode="pan" in app.json handles
-          the layout shift instead. ScrollView lang. ── */}
+      {/* Delivery address chip */}
+      <View style={s.addressChip}>
+        <Text style={s.addressChipIcon}>📍</Text>
+        <Text style={s.addressChipText} numberOfLines={1}>{deliveryAddress}</Text>
+      </View>
+
+      {/* Form — no KeyboardAvoidingView on Android; softwareKeyboardLayoutMode="pan" in app.json handles it */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="none"
       >
-        <Field label="Pangalan ng Item" required error={errors.itemName}>
+        <Field label="Item Name" required error={errors.itemName}>
           <TextInput
-            style={[styles.input, !!errors.itemName && styles.inputError]}
-            placeholder="hal. Rice, Corned Beef, Noodles..."
-            placeholderTextColor="#94a3b8"
+            style={[s.input, !!errors.itemName && s.inputError]}
+            placeholder="e.g. Rice, Corned Beef, Noodles..."
+            placeholderTextColor={C.textHint}
             value={itemName}
             onChangeText={(v) => { setItemName(v); setErrors(p => ({ ...p, itemName: null })) }}
             returnKeyType="next"
@@ -155,18 +147,18 @@ export default function PasabuyRequestScreen({ navigation, route }) {
           />
         </Field>
 
-        <Field label="Dami / Quantity" required error={errors.quantity}>
-          <View style={styles.qtyRow}>
+        <Field label="Quantity" required error={errors.quantity}>
+          <View style={s.qtyRow}>
             <TouchableOpacity
-              style={styles.qtyBtn}
+              style={s.qtyBtn}
               onPress={() => setQuantity(q => String(Math.max(1, Number(q) - 1)))}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.qtyBtnText}>−</Text>
+              <Text style={s.qtyBtnText}>−</Text>
             </TouchableOpacity>
             <TextInput
               ref={quantityRef}
-              style={[styles.qtyInput, !!errors.quantity && styles.inputError]}
+              style={[s.qtyInput, !!errors.quantity && s.inputError]}
               value={quantity}
               onChangeText={(v) => { setQuantity(v); setErrors(p => ({ ...p, quantity: null })) }}
               keyboardType="numeric"
@@ -176,21 +168,21 @@ export default function PasabuyRequestScreen({ navigation, route }) {
               blurOnSubmit={false}
             />
             <TouchableOpacity
-              style={styles.qtyBtn}
+              style={s.qtyBtn}
               onPress={() => setQuantity(q => String(Number(q) + 1))}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.qtyBtnText}>+</Text>
+              <Text style={s.qtyBtnText}>+</Text>
             </TouchableOpacity>
           </View>
         </Field>
 
-        <Field label="Piniling Tindahan / Source">
+        <Field label="Preferred Store (optional)">
           <TextInput
             ref={storeRef}
-            style={styles.input}
-            placeholder="hal. Palengke, 7-Eleven... (opsyonal)"
-            placeholderTextColor="#94a3b8"
+            style={s.input}
+            placeholder="e.g. Palengke, 7-Eleven... (optional)"
+            placeholderTextColor={C.textHint}
             value={store}
             onChangeText={setStore}
             returnKeyType="next"
@@ -200,13 +192,13 @@ export default function PasabuyRequestScreen({ navigation, route }) {
         </Field>
 
         <Field label="Budget (₱)" required error={errors.budget}>
-          <View style={[styles.budgetWrapper, !!errors.budget && styles.inputError]}>
-            <Text style={styles.pesoSign}>₱</Text>
+          <View style={[s.budgetWrapper, !!errors.budget && s.inputError]}>
+            <Text style={s.pesoSign}>₱</Text>
             <TextInput
               ref={budgetRef}
-              style={styles.budgetInput}
+              style={s.budgetInput}
               placeholder="0.00"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={C.textHint}
               value={budget}
               onChangeText={(v) => { setBudget(v); setErrors(p => ({ ...p, budget: null })) }}
               keyboardType="decimal-pad"
@@ -215,15 +207,15 @@ export default function PasabuyRequestScreen({ navigation, route }) {
               blurOnSubmit={false}
             />
           </View>
-          <Text style={styles.budgetHint}>Ito ang magiging spending limit ng provider mo.</Text>
+          <Text style={s.budgetHint}>This is the spending limit for your shopper.</Text>
         </Field>
 
-        <Field label="Notes / Special Instructions">
+        <Field label="Notes / Special Instructions (optional)">
           <TextInput
             ref={notesRef}
-            style={[styles.input, styles.notesInput]}
-            placeholder={'hal.\n"Pwede ibang brand kung wala"\n"Huwag masyadong malambot ang tinapay"'}
-            placeholderTextColor="#94a3b8"
+            style={[s.input, s.notesInput]}
+            placeholder={'e.g.\n"Any brand is fine if unavailable"\n"Soft bread please"'}
+            placeholderTextColor={C.textHint}
             value={notes}
             onChangeText={setNotes}
             multiline
@@ -237,10 +229,10 @@ export default function PasabuyRequestScreen({ navigation, route }) {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* ── Continue button — absolute sa bottom para hindi ma-cover ng keyboard ── */}
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.continueBtn} onPress={handleContinue} activeOpacity={0.85}>
-          <Text style={styles.continueBtnText}>Susunod: I-review ang Order  →</Text>
+      {/* Footer */}
+      <View style={s.footer}>
+        <TouchableOpacity style={s.continueBtn} onPress={handleContinue} activeOpacity={0.85}>
+          <Text style={s.continueBtnText}>Next: Review Order →</Text>
         </TouchableOpacity>
       </View>
 
@@ -248,52 +240,48 @@ export default function PasabuyRequestScreen({ navigation, route }) {
   )
 }
 
-const styles = StyleSheet.create({
-  safe:    { flex: 1, backgroundColor: '#fff' },
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: C.white },
 
-  header:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: Platform.OS === 'android' ? 48 : 12, paddingBottom: 12, backgroundColor: '#fff', borderBottomWidth: 0.5, borderBottomColor: '#d1fae5' },
-  backBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: GREEN_BG, alignItems: 'center', justifyContent: 'center' },
-  backIcon:{ fontSize: 22, color: GREEN, fontWeight: '600', lineHeight: 28 },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logoIcon:{ width: 32, height: 32, borderRadius: 8, backgroundColor: GREEN_BG, alignItems: 'center', justifyContent: 'center' },
-  title:   { fontSize: 17, fontWeight: '700', color: GREEN_DK },
+  navBar:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: Platform.OS === 'android' ? 8 : 4, paddingBottom: 6, backgroundColor: C.white },
+  backBtn:       { width: 36, height: 36, borderRadius: 10, backgroundColor: C.primaryLt, alignItems: 'center', justifyContent: 'center' },
+  backIcon:      { fontSize: 22, color: C.primary, fontWeight: '600', lineHeight: 28 },
 
-  stepRow:        { flexDirection: 'row', justifyContent: 'center', paddingVertical: 10, backgroundColor: '#fff' },
-  stepItem:       { alignItems: 'center', width: 72 },
-  stepDot:        { width: 26, height: 26, borderRadius: 13, backgroundColor: '#f1f5f9', borderWidth: 1.5, borderColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center', marginBottom: 3 },
-  stepDotDone:    { backgroundColor: GREEN_BG, borderColor: GREEN },
-  stepDotActive:  { backgroundColor: GREEN, borderColor: GREEN },
-  stepNum:        { fontSize: 11, fontWeight: '700', color: '#94a3b8' },
-  stepNumDone:    { color: GREEN },
-  stepLabel:      { fontSize: 9, color: '#94a3b8', fontWeight: '600' },
-  stepLabelActive:{ color: GREEN },
+  stepBar:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 8, backgroundColor: C.white, borderBottomWidth: 0.5, borderBottomColor: C.border },
+  stepItem:      { alignItems: 'center' },
+  stepConnector: { flex: 1, height: 1.5, backgroundColor: C.border, marginHorizontal: 4, marginBottom: 14 },
+  stepDot:       { width: 22, height: 22, borderRadius: 11, backgroundColor: '#F1F5F9', borderWidth: 1.5, borderColor: C.border, alignItems: 'center', justifyContent: 'center', marginBottom: 3 },
+  stepDotActive: { backgroundColor: C.primary, borderColor: C.primary },
+  stepNum:       { fontSize: 10, fontWeight: '700', color: C.textHint },
+  stepNumActive: { color: C.white },
+  stepLabel:     { fontSize: 8, color: C.textHint, fontWeight: '600' },
+  stepLabelActive:{ color: C.primary },
 
-  addressChip:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: GREEN_BG, marginHorizontal: 16, marginVertical: 8, borderRadius: 10, padding: 10, borderWidth: 0.5, borderColor: '#a7f3d0' },
+  addressChip:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.primaryLt, marginHorizontal: 16, marginVertical: 8, borderRadius: 10, padding: 10, borderWidth: 0.5, borderColor: C.primaryMd },
   addressChipIcon: { fontSize: 13 },
-  addressChipText: { flex: 1, fontSize: 12, color: GREEN_DK, fontWeight: '600' },
+  addressChipText: { flex: 1, fontSize: 12, color: C.text, fontWeight: '600' },
 
   scrollContent: { paddingHorizontal: 20, paddingTop: 8 },
 
   fieldGroup: { marginBottom: 18 },
-  fieldLabel: { fontSize: 13, fontWeight: '700', color: '#0f172a', marginBottom: 7 },
-  required:   { color: RED },
-  errorText:  { fontSize: 11, color: RED, marginTop: 5 },
+  fieldLabel: { fontSize: 13, fontWeight: '700', color: C.text, marginBottom: 7 },
+  errorText:  { fontSize: 11, color: C.red, marginTop: 5 },
 
-  input:      { backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: '#0f172a' },
-  inputError: { borderColor: RED },
-  notesInput: { height: 100, paddingTop: 12 },
+  input:      { backgroundColor: C.bg, borderRadius: 12, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: C.text },
+  inputError: { borderColor: C.red },
+  notesInput: { height: 100, paddingTop: 12, textAlignVertical: 'top' },
 
   qtyRow:    { flexDirection: 'row', alignItems: 'center' },
-  qtyBtn:    { width: 44, height: 44, backgroundColor: GREEN_BG, borderWidth: 1, borderColor: '#a7f3d0', borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  qtyBtnText:{ fontSize: 22, color: GREEN, fontWeight: '700', lineHeight: 28 },
-  qtyInput:  { flex: 1, marginHorizontal: 8, backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', fontSize: 18, fontWeight: '700', color: '#0f172a', paddingVertical: 10 },
+  qtyBtn:    { width: 44, height: 44, backgroundColor: C.primaryLt, borderWidth: 1, borderColor: C.primaryMd, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  qtyBtnText:{ fontSize: 22, color: C.primary, fontWeight: '700', lineHeight: 28 },
+  qtyInput:  { flex: 1, marginHorizontal: 8, backgroundColor: C.bg, borderRadius: 12, borderWidth: 1, borderColor: C.border, fontSize: 18, fontWeight: '700', color: C.text, paddingVertical: 10, textAlign: 'center' },
 
-  budgetWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 14 },
-  pesoSign:      { fontSize: 16, fontWeight: '700', color: GREEN, marginRight: 6 },
-  budgetInput:   { flex: 1, fontSize: 16, color: '#0f172a', paddingVertical: 12, fontWeight: '600' },
-  budgetHint:    { fontSize: 11, color: '#64748b', marginTop: 5 },
+  budgetWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.bg, borderRadius: 12, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14 },
+  pesoSign:      { fontSize: 16, fontWeight: '700', color: C.primary, marginRight: 6 },
+  budgetInput:   { flex: 1, fontSize: 16, color: C.text, paddingVertical: 12, fontWeight: '600' },
+  budgetHint:    { fontSize: 11, color: C.textSub, marginTop: 5 },
 
-  footer:          { paddingHorizontal: 20, paddingBottom: Platform.OS === 'android' ? 20 : 32, paddingTop: 12, backgroundColor: '#fff', borderTopWidth: 0.5, borderTopColor: '#e2e8f0' },
-  continueBtn:     { backgroundColor: GREEN, borderRadius: 14, paddingVertical: 15, alignItems: 'center', shadowColor: GREEN, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
-  continueBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  footer:          { paddingHorizontal: 20, paddingBottom: Platform.OS === 'android' ? 20 : 32, paddingTop: 12, backgroundColor: C.white, borderTopWidth: 0.5, borderTopColor: C.border },
+  continueBtn:     { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center', shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  continueBtnText: { color: C.white, fontSize: 15, fontWeight: '700' },
 })

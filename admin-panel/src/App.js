@@ -4,6 +4,7 @@ import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import UsersPage from './pages/UsersPage';
 import ProvidersPage from './pages/ProvidersPage';
+import UsersDetailPage from './pages/UsersDetailPage';
 import ReportsPage from './pages/ReportsPage';  // ✅ BAGO
 
 function PrivateRoute({ children }) {
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
         <Route path="/users" element={<PrivateRoute><UsersPage /></PrivateRoute>} />
         <Route path="/providers" element={<PrivateRoute><ProvidersPage /></PrivateRoute>} />
+        <Route path="/users/:id" element={<PrivateRoute><UsersDetailPage /></PrivateRoute>} />
         <Route path="/reports" element={<PrivateRoute><ReportsPage /></PrivateRoute>} />  {/* ✅ BAGO */}
       </Routes>
     </BrowserRouter>

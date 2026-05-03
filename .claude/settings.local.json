@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /c/Projects/3pas log --oneline)",
+      "Bash(sed -i \"s/const PRIMARY = '#0F766E'/const PRIMARY = '#1D4ED8'/g; s/const BG      = '#F0FDFA'/const BG      = '#F8FAFF'/g; s/#CCFBF1/#BFDBFE/g\" /c/Projects/3pas/frontend-mobile/3ps-v3/src/screens/auth/ChangePasswordScreen.js)",
+      "Bash(sed -i \"s/const PRIMARY = '#0F766E'/const PRIMARY = '#1D4ED8'/g; s/const BG      = '#F0FDFA'/const BG      = '#F8FAFF'/g; s/#CCFBF1/#BFDBFE/g\" /c/Projects/3pas/frontend-mobile/3ps-v3/src/screens/auth/EditProfileScreen.js)",
+      "Bash(psql -h localhost -U postgres -d 3ps_db -c ' *)",
+      "PowerShell(Get-Command psql -ErrorAction SilentlyContinue)",
+      "Bash(sed -i \"s/'#0D6B63'/'#2563EB'/g; s/'#E6F4F2'/'#EFF6FF'/g; s/'#A7D9D5'/'#BFDBFE'/g\" c:/Projects/3pas/frontend-mobile/3ps-v3/src/screens/auth/LoginScreen.js)",
+      "Bash(sed -i \"s/'#0D6B63'/'#2563EB'/g; s/'#E6F4F2'/'#EFF6FF'/g; s/'#A7D9D5'/'#BFDBFE'/g\" c:/Projects/3pas/frontend-mobile/3ps-v3/src/screens/provider/ProviderHomeScreen.js)",
+      "Bash(sed -i \"s/'#0D6B63'/'#2563EB'/g; s/'#E6F4F2'/'#EFF6FF'/g; s/'#A7D9D5'/'#BFDBFE'/g\" c:/Projects/3pas/frontend-mobile/3ps-v3/src/screens/provider/ProviderRequestsScreen.js)",
+      "Bash(xargs sed *)",
+      "Bash(node migrate-online.js)"
+    ]
+  }
+}

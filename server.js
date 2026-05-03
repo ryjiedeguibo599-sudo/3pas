@@ -9,9 +9,10 @@ const db            = require('./src/config/db')
 const authRoutes    = require('./src/routes/auth')
 const pasabuyRoutes = require('./src/routes/pasabuy')
 const pasakayRoutes = require('./src/routes/pasakay')
-const parepairRoutes = require('./src/routes/parepair')
+const parepairRoutes = require('./src/routes/padala')
 const adminRoutes   = require('./src/routes/admin')
-const providerRoutes = require('./src/routes/provider') // ✅ ADDED
+const providerRoutes = require('./src/routes/provider')
+const chatRoutes    = require('./src/routes/chat')
 
 const app    = express()
 const server = http.createServer(app)
@@ -32,7 +33,8 @@ app.use('/api/pasabuy',  pasabuyRoutes)
 app.use('/api/pasakay',  pasakayRoutes)
 app.use('/api/parepair', parepairRoutes)
 app.use('/api/admin',    adminRoutes)
-app.use('/api/provider', providerRoutes) // ✅ ADDED
+app.use('/api/provider', providerRoutes)
+app.use('/api/chat',     chatRoutes)
 
 app.get('/', (req, res) => {
   res.json({
@@ -42,13 +44,20 @@ app.get('/', (req, res) => {
 })
 
 // ✅ Socket.io — Room-based (per user)
+const userSockets = {}
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id)
 
   // Resident/Provider mag-jo-join sa sariling room gamit ang user_id
-  socket.on('join', (userId) => {
+  socket.on('join', async (userId) => {
     socket.join(`user_${userId}`)
-    console.log(`User ${userId} joined room user_${userId}`)
+    userSockets[socket.id] = userId
+    try {
+      const db = require('./src/config/db')
+      await db.query('UPDATE users SET is_online = true WHERE id = $1', [userId])
+    } catch (e) { console.error('Failed to set online status', e) }
+    console.log(`User ${userId} joined room user_${userId} and marked online`)
   })
 
   // Para sa providers — join provider room
@@ -73,7 +82,31 @@ io.on('connection', (socket) => {
     io.to(`user_${data.userId}`).emit('location_updated', data)
   })
 
-  socket.on('disconnect', () => {
+  socket.on('send_message', async (data) => {
+    try {
+      const db = require('./src/config/db')
+      const result = await db.query(
+        `INSERT INTO chat_messages (sender_id, receiver_id, service_type, service_id, message) 
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [data.sender_id, data.receiver_id, data.service_type, data.service_id, data.message]
+      )
+      const msg = result.rows[0]
+      io.to(`user_${data.receiver_id}`).emit('receive_message', msg)
+      io.to(`user_${data.sender_id}`).emit('receive_message', msg)
+    } catch (err) {
+      console.error('Socket send_message error:', err)
+    }
+  })
+
+  socket.on('disconnect', async () => {
+    const userId = userSockets[socket.id]
+    if (userId) {
+      try {
+        const db = require('./src/config/db')
+        await db.query('UPDATE users SET is_online = false WHERE id = $1', [userId])
+      } catch (e) { console.error('Failed to set offline status', e) }
+      delete userSockets[socket.id]
+    }
     console.log('User disconnected:', socket.id)
   })
 })

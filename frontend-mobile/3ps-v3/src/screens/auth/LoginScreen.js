@@ -3,86 +3,51 @@
 import React, { useState, useRef } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, Alert, ActivityIndicator,
-  KeyboardAvoidingView, Platform, ScrollView,
-  StatusBar, Animated,
+  StyleSheet, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ScrollView, StatusBar,
 } from 'react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as SecureStore from 'expo-secure-store'
 import API from '../../services/api'
+import { theme } from '../../theme/padulongTheme'
 
-// ── Design Tokens ─────────────────────────────────────────────────
-const C = {
-  primary:   '#0D6B63',
-  primaryLt: '#E6F4F2',
-  primaryMd: '#A7D9D5',
-  bg:        '#F7FAFA',
-  white:     '#FFFFFF',
-  text:      '#111827',
-  textSub:   '#6B7280',
-  textHint:  '#9CA3AF',
-  border:    '#E5E7EB',
-  borderFoc: '#0D6B63',
-  error:     '#DC2626',
-  errorLt:   '#FEF2F2',
-}
-
-// ── Reusable Field Component ──────────────────────────────────────
-function Field({ label, icon, error, children }) {
-  return (
-    <View style={fs.fieldWrap}>
-      <Text style={fs.label}>{label}</Text>
-      <View style={[fs.inputShell, error && fs.inputShellErr]}>
-        <Text style={fs.fieldIcon}>{icon}</Text>
-        {children}
-      </View>
-      {error ? <Text style={fs.errTxt}>{error}</Text> : null}
-    </View>
-  )
-}
+const C = theme.colors
 
 export default function LoginScreen({ navigation }) {
-  const [login,        setLogin]        = useState('')
-  const [password,     setPassword]     = useState('')
+  const [login, setLogin] = useState('')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [loading,      setLoading]      = useState(false)
-  const [errors,       setErrors]       = useState({})
+  const [loading, setLoading] = useState(false)
+  const [errors, setErrors] = useState({})
 
   const passwordRef = useRef(null)
 
-  // ── Auto-detect input type ────────────────────────────────────
-  const isPhone      = /^0\d*$/.test(login)
+  const isPhone = /^0\d*$/.test(login)
   const keyboardType = isPhone ? 'phone-pad' : 'email-address'
-  const fieldIcon    = isPhone ? '📱' : '✉️'
-  const placeholder  = isPhone ? '09XXXXXXXXX' : 'email@example.com'
+  const placeholder = isPhone ? '09XXXXXXXXX' : 'email@example.com'
 
-  // ── Validation ────────────────────────────────────────────────
   const validate = () => {
     const e = {}
-    if (!login.trim())    e.login    = 'Ilagay ang email o contact number.'
-    if (!password.trim()) e.password = 'Ilagay ang password.'
+    if (!login.trim()) e.login = 'Please enter your email, phone, or username.'
+    if (!password.trim()) e.password = 'Please enter your password.'
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
-  // ── Submit ────────────────────────────────────────────────────
   const handleLogin = async () => {
     if (!validate()) return
     try {
       setLoading(true)
       setErrors({})
       const res = await API.post('/auth/login', {
-        login:    login.trim().toLowerCase(),
+        login: login.trim().toLowerCase(),
         password: password.trim(),
       })
       const { token, user } = res.data
-      console.log('USER ROLE:', user.role)  // ← idagdag ito
-      console.log('USER DATA:', user)       // ← para makita lahat
-      await AsyncStorage.multiSet([
-        ['token', token],
-        ['user',  JSON.stringify(user)],
-      ])
+
+      await SecureStore.setItemAsync('token', token)
+      await SecureStore.setItemAsync('user', JSON.stringify(user))
+
       if (user.role === 'provider') {
-        await AsyncStorage.setItem('service_type', user.service_type ?? '')
         navigation.replace('ProviderHome')
       } else if (user.role === 'admin') {
         navigation.replace('AdminHome')
@@ -90,7 +55,7 @@ export default function LoginScreen({ navigation }) {
         navigation.replace('Home')
       }
     } catch (err) {
-      const msg = err.response?.data?.message || 'Mali ang email/contact number o password.'
+      const msg = err.response?.data?.message || 'Incorrect email/contact number or password.'
       setErrors({ general: msg })
     } finally {
       setLoading(false)
@@ -100,196 +65,157 @@ export default function LoginScreen({ navigation }) {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar barStyle="light-content" backgroundColor={C.primary} />
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <ScrollView
-        contentContainerStyle={fs.scroll}
+        contentContainerStyle={s.scroll}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        <View style={s.content}>
+          <Text style={s.title}>Enter your account</Text>
+          <Text style={s.sub}>Email, phone number, or username</Text>
 
-        {/* ── HERO ── */}
-        <View style={fs.hero}>
-          <View style={fs.logoBadge}>
-            <Text style={fs.logoTxt}>3PS</Text>
-          </View>
-          <Text style={fs.heroTitle}>3PS App</Text>
-          <Text style={fs.heroSub}>Municipal Service App</Text>
-          <View style={fs.heroWave} />
-        </View>
-
-        {/* ── CARD ── */}
-        <View style={fs.card}>
-          <Text style={fs.cardTitle}>Welcome back 👋</Text>
-          <Text style={fs.cardSub}>Mag-login gamit ang iyong email o contact number</Text>
-
-          {/* General error banner */}
-          {errors.general ? (
-            <View style={fs.errBanner}>
-              <Text style={fs.errBannerTxt}>⚠ {errors.general}</Text>
+          {!!errors.general && (
+            <View style={s.errBanner}>
+              <Text style={s.errBannerTxt}>⚠ {errors.general}</Text>
             </View>
-          ) : null}
+          )}
 
-          {/* Email / Phone */}
-          <Field label="EMAIL O CONTACT NUMBER" icon={fieldIcon} error={errors.login}>
+          <View style={[s.inputShell, errors.login && s.inputShellErr]}>
             <TextInput
-              style={fs.input}
+              style={s.input}
               placeholder={placeholder}
               placeholderTextColor={C.textHint}
               value={login}
-              onChangeText={v => { setLogin(v); setErrors(p => ({ ...p, login: undefined })) }}
+              onChangeText={(v) => {
+                setLogin(v)
+                setErrors((p) => ({ ...p, login: undefined }))
+              }}
               keyboardType={keyboardType}
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="next"
               onSubmitEditing={() => passwordRef.current?.focus()}
             />
-          </Field>
+          </View>
+          {!!errors.login && <Text style={s.errTxt}>{errors.login}</Text>}
 
-          {/* Password */}
-          <Field label="PASSWORD" icon="🔒" error={errors.password}>
+          <View style={[s.inputShell, errors.password && s.inputShellErr, { marginTop: 14 }]}>
             <TextInput
               ref={passwordRef}
-              style={fs.input}
-              placeholder="Ilagay ang password"
+              style={s.input}
+              placeholder="Password"
               placeholderTextColor={C.textHint}
               value={password}
-              onChangeText={v => { setPassword(v); setErrors(p => ({ ...p, password: undefined })) }}
+              onChangeText={(v) => {
+                setPassword(v)
+                setErrors((p) => ({ ...p, password: undefined }))
+              }}
               secureTextEntry={!showPassword}
               returnKeyType="done"
               onSubmitEditing={handleLogin}
             />
-            <TouchableOpacity onPress={() => setShowPassword(p => !p)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={fs.toggleTxt}>{showPassword ? 'Itago' : 'Ipakita'}</Text>
+            <TouchableOpacity
+              onPress={() => setShowPassword((p) => !p)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={s.toggleTxt}>{showPassword ? 'Hide' : 'Show'}</Text>
             </TouchableOpacity>
-          </Field>
-
-          {/* Forgot */}
-          <TouchableOpacity
-            style={fs.forgotRow}
-            onPress={() => navigation.navigate('ForgotPassword')}
-          >
-            <Text style={fs.forgotTxt}>Nakalimutang password?</Text>
-          </TouchableOpacity>
-
-          {/* Login Button */}
-          <TouchableOpacity
-            style={[fs.btnPrimary, loading && fs.btnDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            {loading
-              ? <ActivityIndicator color={C.white} size="small" />
-              : <Text style={fs.btnPrimaryTxt}>Mag-login</Text>
-            }
-          </TouchableOpacity>
-
-          {/* Divider */}
-          <View style={fs.divider}>
-            <View style={fs.divLine} />
-            <Text style={fs.divTxt}>o</Text>
-            <View style={fs.divLine} />
           </View>
+          {!!errors.password && <Text style={s.errTxt}>{errors.password}</Text>}
 
-          {/* Register */}
+          <TouchableOpacity style={s.forgotRow}>
+            <Text style={s.forgotTxt}>Forgot password?</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={s.footer}>
           <TouchableOpacity
-            style={fs.btnOutline}
+            style={s.btnOutline}
             onPress={() => navigation.navigate('Register')}
             activeOpacity={0.8}
           >
-            <Text style={fs.btnOutlineTxt}>Gumawa ng Account</Text>
+            <Text style={s.btnOutlineTxt}>Create new account</Text>
           </TouchableOpacity>
 
-          <Text style={fs.footer}>© 2025 3PS Municipal Service App</Text>
+          <TouchableOpacity
+            style={[s.btnNext, (!login.trim() || !password.trim() || loading) && s.btnDisabled]}
+            onPress={handleLogin}
+            disabled={!login.trim() || !password.trim() || loading}
+            activeOpacity={0.85}
+          >
+            {loading
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={s.btnNextTxt}>Log In</Text>
+            }
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   )
 }
 
-const fs = StyleSheet.create({
-  scroll: { flexGrow: 1, backgroundColor: C.bg },
+const s = StyleSheet.create({
+  scroll: { flexGrow: 1, backgroundColor: C.background },
+  content: { flex: 1, paddingHorizontal: 28, paddingTop: Platform.OS === 'android' ? 72 : 60 },
+  title: { fontSize: 24, fontWeight: '700', color: C.text, marginBottom: 6 },
+  sub: { fontSize: 14, color: C.textSub, marginBottom: 28 },
 
-  // Hero
-  hero: {
-    backgroundColor: C.primary,
-    paddingTop: 60, paddingBottom: 56,
-    alignItems: 'center', position: 'relative',
-  },
-  logoBadge: {
-    width: 72, height: 72, borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.32)',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 14,
-  },
-  logoTxt:   { fontSize: 26, fontWeight: '800', color: C.white, letterSpacing: -1 },
-  heroTitle: { fontSize: 22, fontWeight: '700', color: C.white, letterSpacing: -0.4 },
-  heroSub:   { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
-  heroWave: {
-    position: 'absolute', bottom: -1, left: 0, right: 0,
-    height: 30, backgroundColor: C.bg,
-    borderTopLeftRadius: 30, borderTopRightRadius: 30,
-  },
-
-  // Card
-  card: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 40 },
-  cardTitle: { fontSize: 22, fontWeight: '700', color: C.text, marginBottom: 4 },
-  cardSub:   { fontSize: 13, color: C.textSub, marginBottom: 24, lineHeight: 20 },
-
-  // Error banner
   errBanner: {
-    backgroundColor: C.errorLt, borderRadius: 10,
-    padding: 12, marginBottom: 18,
-    borderLeftWidth: 3, borderLeftColor: C.error,
+    backgroundColor: '#FFF2F2',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: C.danger,
   },
-  errBannerTxt: { fontSize: 13, color: C.error, fontWeight: '500' },
+  errBannerTxt: { fontSize: 13, color: C.danger, fontWeight: '500' },
 
-  // Field
-  fieldWrap:    { marginBottom: 16 },
-  label: {
-    fontSize: 10, fontWeight: '700', color: C.textHint,
-    letterSpacing: 0.9, marginBottom: 7,
-  },
   inputShell: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: C.white,
-    borderWidth: 1, borderColor: C.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
     borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 13,
-    gap: 10,
+    paddingHorizontal: 16,
+    backgroundColor: C.surface,
   },
-  inputShellErr: { borderColor: C.error, borderWidth: 1.5 },
-  fieldIcon: { fontSize: 15 },
-  input: { flex: 1, fontSize: 14, color: C.text, padding: 0 },
-  toggleTxt: { fontSize: 12, color: C.primary, fontWeight: '600' },
-  errTxt: { fontSize: 11, color: C.error, marginTop: 5, fontWeight: '500' },
+  inputShellErr: { borderColor: C.danger },
+  input: { flex: 1, fontSize: 16, color: C.text, paddingVertical: 14 },
+  toggleTxt: { fontSize: 13, color: C.primary, fontWeight: '600' },
+  errTxt: { fontSize: 12, color: C.danger, marginTop: 6, marginLeft: 2 },
 
-  // Forgot
-  forgotRow: { alignItems: 'flex-end', marginTop: -4, marginBottom: 22 },
-  forgotTxt: { fontSize: 12, color: C.primary, fontWeight: '600' },
+  forgotRow: { alignItems: 'flex-start', marginTop: 12 },
+  forgotTxt: { fontSize: 13, color: C.primary, fontWeight: '600' },
 
-  // Buttons
-  btnPrimary: {
-    backgroundColor: C.primary, borderRadius: 13,
-    paddingVertical: 15, alignItems: 'center',
-    shadowColor: C.primary, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
+  footer: {
+    paddingHorizontal: 28,
+    paddingBottom: Platform.OS === 'android' ? 28 : 44,
+    paddingTop: 12,
+    flexDirection: 'row',
+    gap: 12,
+    borderTopWidth: 0.5,
+    borderTopColor: C.border,
   },
-  btnDisabled:    { opacity: 0.65 },
-  btnPrimaryTxt:  { color: C.white, fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
-
-  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 20, gap: 10 },
-  divLine: { flex: 1, height: 1, backgroundColor: C.border },
-  divTxt:  { fontSize: 12, color: C.textHint },
-
   btnOutline: {
-    borderRadius: 13, paddingVertical: 14, alignItems: 'center',
-    borderWidth: 1.5, borderColor: C.primary,
-    backgroundColor: C.primaryLt,
+    flex: 1,
+    borderRadius: 50,
+    paddingVertical: 13,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  btnOutlineTxt: { color: C.primary, fontSize: 14, fontWeight: '700' },
+  btnOutlineTxt: { fontSize: 13, fontWeight: '600', color: C.text },
 
-  footer: { textAlign: 'center', fontSize: 11, color: C.textHint, marginTop: 32 },
+  btnNext: {
+    flex: 1,
+    backgroundColor: C.primary,
+    borderRadius: 50,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  btnDisabled: { opacity: 0.4 },
+  btnNextTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
 })

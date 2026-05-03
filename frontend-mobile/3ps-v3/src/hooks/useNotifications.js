@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { Alert } from 'react-native'
+import { Alert, AppState } from 'react-native'
+import * as Notifications from 'expo-notifications'
 import { io } from 'socket.io-client'
 import { API_URL } from '../services/api'
 
@@ -16,12 +17,31 @@ export default function useNotifications(userId) {
 
     socketRef.current.on('connect', () => {
       console.log('✅ Socket connected:', socketRef.current.id)
-      // Join personal room gamit ang user_id
       socketRef.current.emit('join', userId)
     })
 
-    socketRef.current.on('notification', (data) => {
-      Alert.alert(data.title, data.message)
+    socketRef.current.on('notification', async (data) => {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: data.title || 'New Notification',
+          body: data.message,
+          data: data,
+          sound: true,
+        },
+        trigger: null,
+      });
+    })
+
+    socketRef.current.on('new_request', async (data) => {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '🚨 New Request!',
+          body: `A new booking request arrived.`,
+          data: data,
+          sound: true,
+        },
+        trigger: null,
+      });
     })
 
     socketRef.current.on('disconnect', () => {

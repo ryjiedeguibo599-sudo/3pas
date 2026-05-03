@@ -10,28 +10,43 @@ export default function RegisterScreen({ navigation }) {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  const [barangay, setBarangay] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleRegister = async () => {
-    if (!fullName || !email || !phone || !password) {
-      Alert.alert('Error', 'Please fill in all fields')
+    if (!fullName || !email || !phone || !barangay || !password) {
+      Alert.alert('Error', 'Punan ang lahat ng fields')
       return
     }
 
     try {
       setLoading(true)
-      await API.post('/auth/register', {
+      console.log('Sending register request...', {
         full_name: fullName,
         email,
         phone,
+        barangay,
         password,
         role: 'resident'
       })
-      Alert.alert('Success', 'Registration successful! Please login.')
+      const response = await API.post('/auth/register', {
+        full_name: fullName,
+        email,
+        phone,
+        barangay,
+        password,
+        role: 'resident'
+      })
+      console.log('Register success:', response.data)
+      Alert.alert('Success', 'Matagumpay na nairehistro! Mag-login na.')
       navigation.navigate('Login')
     } catch (err) {
-      Alert.alert('Error', 'Registration failed. Try again.')
+      console.log('FULL ERROR:', JSON.stringify(err.response?.data))
+      console.log('STATUS:', err.response?.status)
+      console.log('MESSAGE:', err.message)
+      const msg = err.response?.data?.message || err.message || 'Registration failed. Try again.'
+      Alert.alert('Error', msg)
     } finally {
       setLoading(false)
     }
@@ -60,7 +75,7 @@ export default function RegisterScreen({ navigation }) {
 
       <TextInput
         style={styles.input}
-        placeholder="Phone Number"
+        placeholder="Phone Number (09XXXXXXXXX)"
         value={phone}
         onChangeText={setPhone}
         keyboardType="phone-pad"
@@ -68,7 +83,14 @@ export default function RegisterScreen({ navigation }) {
 
       <TextInput
         style={styles.input}
-        placeholder="Password"
+        placeholder="Barangay"
+        value={barangay}
+        onChangeText={setBarangay}
+      />
+
+      <TextInput
+        style={styles.input}
+        placeholder="Password (minimum 8 characters)"
         value={password}
         onChangeText={setPassword}
         secureTextEntry

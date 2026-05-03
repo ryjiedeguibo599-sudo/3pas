@@ -2,44 +2,58 @@ import React, { useEffect, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, RefreshControl,
-  SafeAreaView, Platform, Alert
+  Platform, Alert, LayoutAnimation
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import API from '../../services/api'
 import RatingModal from '../../components/RatingModal'
+import { theme } from '../../theme/padulongTheme'
+import ConfirmationModal from '../../components/ConfirmationModal'
 
-const GREEN  = '#16a34a'
-const BLUE   = '#2563eb'
-const ORANGE = '#f59e0b'
-const PURPLE = '#8b5cf6'
-const RED    = '#ef4444'
+const C = {
+  primary:   '#F08A24',
+  primaryLt: '#FFF7ED',
+  primaryMd: '#FED7AA',
+  text:      '#0F172A',
+  textSub:   '#64748B',
+  textHint:  '#64748B',
+  border:    '#E2E8F0',
+  bg:        '#F8FAFF',
+  white:     '#FFFFFF',
+  orange:    '#F08A24',
+  blue:      '#3B82F6',
+  red:       '#EF4444',
+  green:     '#16A34A',
+}
 
 const STATUS_COLOR = {
-  pending:    ORANGE,
-  accepted:   BLUE,
-  on_the_way: PURPLE,
-  completed:  GREEN,
-  cancelled:  RED,
+  pending:    C.orange,
+  accepted:   C.blue,
+  on_the_way: C.blue,
+  completed:  C.green,
+  cancelled:  C.red,
 }
 
 const STATUS_BG = {
-  pending:    '#fefce8',
-  accepted:   '#eff6ff',
-  on_the_way: '#f5f3ff',
-  completed:  '#f0fdf4',
-  cancelled:  '#fef2f2',
+  pending:    '#FFF7ED',
+  accepted:   '#EFF6FF',
+  on_the_way: '#EFF6FF',
+  completed:  '#F0FDF4',
+  cancelled:  '#FEF2F2',
 }
 
 const STATUS_STEPS = ['pending', 'accepted', 'on_the_way', 'completed']
 
 const STATUS_INFO = {
-  pending:    { label: 'Pending',    emoji: '⏳', desc: 'Naghihintay ng rider na mag-accept.' },
-  accepted:   { label: 'Accepted',   emoji: '🔵', desc: 'May rider nang nag-accept ng booking mo.' },
-  on_the_way: { label: 'On the Way', emoji: '🛵', desc: 'Papunta na ang rider sa pickup mo!' },
-  completed:  { label: 'Completed',  emoji: '✅', desc: 'Tapos na ang ride!' },
-  cancelled:  { label: 'Cancelled',  emoji: '❌', desc: 'Na-cancel ang ride.' },
+  pending:    { label: 'Pending',    emoji: '⏳', desc: 'Waiting for a rider to accept your booking.' },
+  accepted:   { label: 'Accepted',   emoji: '🔵', desc: 'A rider has accepted your booking.' },
+  on_the_way: { label: 'On the Way', emoji: '🛵', desc: 'Your rider is on the way to your pickup!' },
+  completed:  { label: 'Completed',  emoji: '✅', desc: 'Your ride is complete!' },
+  cancelled:  { label: 'Cancelled',  emoji: '❌', desc: 'This ride was cancelled.' },
 }
 
-const TABS = ['Lahat', 'Pending', 'On-going', 'Completed', 'Cancelled']
+const TABS = ['All', 'Pending', 'On-going', 'Completed', 'Cancelled']
 
 function ProgressBar({ status }) {
   if (status === 'cancelled') return null
@@ -48,7 +62,7 @@ function ProgressBar({ status }) {
   return (
     <View style={styles.progressWrapper}>
       <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: STATUS_COLOR[status] || GREEN }]} />
+        <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: STATUS_COLOR[status] || C.primary }]} />
       </View>
       <Text style={[styles.progressLabel, { color: STATUS_COLOR[status] }]}>
         {STATUS_INFO[status]?.emoji} {STATUS_INFO[status]?.label}
@@ -77,7 +91,7 @@ function TrackingSteps({ status }) {
               <View style={[
                 styles.stepDot,
                 current && { backgroundColor: STATUS_COLOR[step], borderColor: STATUS_COLOR[step] },
-                done    && { backgroundColor: GREEN, borderColor: GREEN },
+                done    && { backgroundColor: C.primary, borderColor: C.primary },
               ]}>
                 <Text style={styles.stepDotText}>{done ? '✓' : STATUS_INFO[step].emoji}</Text>
               </View>
@@ -85,7 +99,7 @@ function TrackingSteps({ status }) {
                 <Text style={[
                   styles.stepLabel,
                   current && { color: STATUS_COLOR[step], fontWeight: '700' },
-                  done    && { color: GREEN, fontWeight: '700' },
+                  done    && { color: C.primary, fontWeight: '700' },
                 ]}>
                   {STATUS_INFO[step].label}
                 </Text>
@@ -98,7 +112,7 @@ function TrackingSteps({ status }) {
               )}
             </View>
             {index < STATUS_STEPS.length - 1 && (
-              <View style={[styles.stepLine, done && { backgroundColor: GREEN }]} />
+              <View style={[styles.stepLine, done && { backgroundColor: C.primary }]} />
             )}
           </View>
         )
@@ -108,22 +122,19 @@ function TrackingSteps({ status }) {
 }
 
 export default function MyRidesScreen({ navigation }) {
-  const [rides, setRides]             = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [refreshing, setRefreshing]   = useState(false)
   const [expanded, setExpanded]       = useState(null)
-  const [activeTab, setActiveTab]     = useState('Lahat')
+  const [activeTab, setActiveTab]     = useState('All')
   const [cancelling, setCancelling]   = useState(null)
+  const [cancelModal, setCancelModal] = useState({ visible: false, id: null })
   const [ratingModal, setRatingModal] = useState({ visible: false, rideId: null })
-  const [reviewedIds, setReviewedIds] = useState([])
+  const queryClient = useQueryClient()
 
-  useEffect(() => { fetchRides() }, [])
-
-  const fetchRides = async () => {
-    try {
+  const { data: { rides = [], reviewedIds = [] } = {}, isLoading: loading, isRefetching: refreshing, refetch } = useQuery({
+    queryKey: ['myRides'],
+    queryFn: async () => {
       const res = await API.get('/pasakay/rides')
-      setRides(res.data.rides)
-      const completed = res.data.rides.filter(r => r.status === 'completed')
+      const fetchedRides = res.data.rides || []
+      const completed = fetchedRides.filter(r => r.status === 'completed')
       const reviewed  = []
       for (const ride of completed) {
         try {
@@ -131,47 +142,36 @@ export default function MyRidesScreen({ navigation }) {
           if (r.data.review) reviewed.push(ride.id)
         } catch {}
       }
-      setReviewedIds(reviewed)
+      return { rides: fetchedRides, reviewedIds: reviewed }
+    }
+  })
+
+  const requestCancel = (rideId) => setCancelModal({ visible: true, id: rideId })
+
+  const executeCancel = async () => {
+    const rideId = cancelModal.id
+    setCancelModal({ visible: false, id: null })
+    if (!rideId) return
+    try {
+      setCancelling(rideId)
+      await API.patch(`/pasakay/rides/${rideId}/cancel`)
+      await queryClient.invalidateQueries({ queryKey: ['myRides'] })
     } catch (err) {
-      console.log('Error fetching rides:', err)
+      const msg = err?.response?.data?.message || 'Could not cancel. Please try again.'
+      Alert.alert('Error', msg)
     } finally {
-      setLoading(false)
-      setRefreshing(false)
+      setCancelling(null)
     }
   }
 
-  // ── Cancel ride ──────────────────────────────────────────────
-  const handleCancel = (rideId) => {
-    Alert.alert(
-      'I-cancel ang Ride?',
-      'Sigurado ka bang gusto mong i-cancel ang booking na ito?',
-      [
-        { text: 'Hindi', style: 'cancel' },
-        {
-          text: 'Oo, I-cancel',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setCancelling(rideId)
-              await API.patch(`/pasakay/rides/${rideId}/cancel`)
-              await fetchRides()
-            } catch (err) {
-              const msg = err?.response?.data?.message || 'Hindi na-cancel. Try again.'
-              Alert.alert('Error', msg)
-            } finally {
-              setCancelling(null)
-            }
-          },
-        },
-      ]
-    )
+  const onRefresh    = () => { refetch() }
+  const toggleExpand = (id) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+    setExpanded(expanded === id ? null : id)
   }
 
-  const onRefresh    = () => { setRefreshing(true); fetchRides() }
-  const toggleExpand = (id) => setExpanded(expanded === id ? null : id)
-
   const filteredRides = rides.filter(r => {
-    if (activeTab === 'Lahat')     return true
+    if (activeTab === 'All')       return true
     if (activeTab === 'Pending')   return r.status === 'pending'
     if (activeTab === 'On-going')  return ['accepted', 'on_the_way'].includes(r.status)
     if (activeTab === 'Completed') return r.status === 'completed'
@@ -188,8 +188,8 @@ export default function MyRidesScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={GREEN} />
-          <Text style={styles.loadingText}>Kinukuha ang iyong mga ride...</Text>
+          <ActivityIndicator size="large" color={C.primary} />
+          <Text style={styles.loadingText}>Loading your rides...</Text>
         </View>
       </SafeAreaView>
     )
@@ -198,7 +198,6 @@ export default function MyRidesScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
 
-      {/* ── Header ── */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <Text style={styles.backIcon}>‹</Text>
@@ -212,27 +211,25 @@ export default function MyRidesScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* ── Summary strip ── */}
       <View style={styles.summaryRow}>
-        <View style={[styles.summaryChip, { backgroundColor: '#fefce8' }]}>
+        <View style={[styles.summaryChip, { backgroundColor: '#FFF7ED' }]}>
           <Text style={styles.summaryCount}>{pendingCount}</Text>
-          <Text style={[styles.summaryLabel, { color: ORANGE }]}>Pending</Text>
+          <Text style={[styles.summaryLabel, { color: C.orange }]}>Pending</Text>
         </View>
-        <View style={[styles.summaryChip, { backgroundColor: '#eff6ff' }]}>
+        <View style={[styles.summaryChip, { backgroundColor: '#EFF6FF' }]}>
           <Text style={styles.summaryCount}>{ongoingCount}</Text>
-          <Text style={[styles.summaryLabel, { color: BLUE }]}>On-going</Text>
+          <Text style={[styles.summaryLabel, { color: C.blue }]}>On-going</Text>
         </View>
-        <View style={[styles.summaryChip, { backgroundColor: '#f0fdf4' }]}>
+        <View style={[styles.summaryChip, { backgroundColor: '#F0FDF4' }]}>
           <Text style={styles.summaryCount}>{completedCount}</Text>
-          <Text style={[styles.summaryLabel, { color: GREEN }]}>Completed</Text>
+          <Text style={[styles.summaryLabel, { color: C.green }]}>Completed</Text>
         </View>
-        <View style={[styles.summaryChip, { backgroundColor: '#fef2f2' }]}>
+        <View style={[styles.summaryChip, { backgroundColor: '#FEF2F2' }]}>
           <Text style={styles.summaryCount}>{cancelledCount}</Text>
-          <Text style={[styles.summaryLabel, { color: RED }]}>Cancelled</Text>
+          <Text style={[styles.summaryLabel, { color: C.red }]}>Cancelled</Text>
         </View>
       </View>
 
-      {/* ── Tabs ── */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabsRow}>
         {TABS.map(tab => (
           <TouchableOpacity
@@ -249,35 +246,37 @@ export default function MyRidesScreen({ navigation }) {
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GREEN} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} />}
       >
-        {/* ── Empty state ── */}
         {filteredRides.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>{activeTab === 'Cancelled' ? '❌' : '🛵'}</Text>
-            <Text style={styles.emptyTitle}>Wala pang rides</Text>
-            <Text style={styles.emptySubtitle}>
-              {activeTab === 'Lahat'      ? 'Mag-book ng ride sa Pasakay!'
-              : activeTab === 'Cancelled' ? 'Wala kang cancelled na rides.'
-              : `Wala kang ${activeTab.toLowerCase()} na rides.`}
+            <Text style={styles.emptyTitle}>
+              {activeTab === 'All' ? 'No rides yet' : `No ${activeTab.toLowerCase()} rides`}
             </Text>
-            {activeTab === 'Lahat' && (
+            <Text style={styles.emptySubtitle}>
+              {activeTab === 'All'
+                ? 'Book a ride with Pasakay and we\'ll match you with a nearby driver.'
+                : activeTab === 'Cancelled'
+                ? 'Cancelled rides will show up here.'
+                : `Your ${activeTab.toLowerCase()} rides will appear here.`}
+            </Text>
+            {activeTab !== 'Cancelled' && (
               <TouchableOpacity style={styles.newBtn} onPress={() => navigation.navigate('Pasakay')}>
-                <Text style={styles.newBtnText}>Mag-book ng Ride</Text>
+                <Text style={styles.newBtnText}>+ Book a Ride</Text>
               </TouchableOpacity>
             )}
           </View>
         ) : (
           filteredRides.map((item) => {
             const isOpen    = expanded === item.id
-            const sc        = STATUS_COLOR[item.status] || '#94a3b8'
-            const sb        = STATUS_BG[item.status]   || '#f8fafc'
+            const sc        = STATUS_COLOR[item.status] || '#94A3B8'
+            const sb        = STATUS_BG[item.status]   || C.bg
             const isPending = item.status === 'pending'
 
             return (
               <View key={item.id} style={styles.card}>
 
-                {/* Card header */}
                 <TouchableOpacity style={styles.cardHeader} onPress={() => toggleExpand(item.id)} activeOpacity={0.7}>
                   <View style={{ flex: 1 }}>
                     <View style={styles.cardTopRow}>
@@ -290,7 +289,7 @@ export default function MyRidesScreen({ navigation }) {
                       </View>
                     </View>
                     <Text style={styles.dateText}>
-                      🕐 {new Date(item.booked_at).toLocaleDateString('fil-PH', {
+                      🕐 {new Date(item.booked_at).toLocaleDateString('en-PH', {
                         year: 'numeric', month: 'long', day: 'numeric',
                         hour: '2-digit', minute: '2-digit',
                       })}
@@ -299,17 +298,15 @@ export default function MyRidesScreen({ navigation }) {
                   <Text style={[styles.expandIcon, isOpen && { transform: [{ rotate: '180deg' }] }]}>⌄</Text>
                 </TouchableOpacity>
 
-                <ProgressBar status={item.status} />
-                <TrackingSteps status={item.status} />
-
-                {/* Expanded details */}
                 {isOpen && (
                   <View style={styles.details}>
+                    <ProgressBar status={item.status} />
+                    <TrackingSteps status={item.status} />
+
                     <View style={styles.divider} />
 
-                    {/* Route */}
                     <View style={styles.routeRow}>
-                      <View style={[styles.routeDot, { backgroundColor: GREEN }]} />
+                      <View style={[styles.routeDot, { backgroundColor: C.primary }]} />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.routeLabel}>PICKUP</Text>
                         <Text style={styles.routeValue}>{item.pickup_location}</Text>
@@ -317,7 +314,7 @@ export default function MyRidesScreen({ navigation }) {
                     </View>
                     <View style={styles.routeConnector} />
                     <View style={styles.routeRow}>
-                      <View style={[styles.routeDot, { backgroundColor: RED }]} />
+                      <View style={[styles.routeDot, { backgroundColor: C.red }]} />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.routeLabel}>DROPOFF</Text>
                         <Text style={styles.routeValue}>{item.dropoff_location}</Text>
@@ -326,13 +323,11 @@ export default function MyRidesScreen({ navigation }) {
 
                     <View style={styles.divider} />
 
-                    {/* Fare */}
                     <View style={styles.fareRow}>
                       <Text style={styles.fareLabel}>💰 Fare</Text>
                       <Text style={styles.fareValue}>₱{item.fare}</Text>
                     </View>
 
-                    {/* Rider info */}
                     {item.rider_name && (
                       <View style={styles.riderRow}>
                         <Text style={styles.riderLabel}>🛵 Rider</Text>
@@ -340,33 +335,30 @@ export default function MyRidesScreen({ navigation }) {
                       </View>
                     )}
 
-                    {/* Payment note */}
                     {item.status !== 'cancelled' && (
                       <View style={styles.codRow}>
-                        <Text style={styles.codText}>💳 Cash o GCash — bayad pagkatapos ng ride</Text>
+                        <Text style={styles.codText}>💳 Cash or GCash — pay after the ride</Text>
                       </View>
                     )}
 
-                    {/* ── Cancel button — pending lang ── */}
                     {isPending && (
                       <TouchableOpacity
                         style={styles.cancelBtn}
-                        onPress={() => handleCancel(item.id)}
+                        onPress={() => requestCancel(item.id)}
                         disabled={cancelling === item.id}
                         activeOpacity={0.8}
                       >
                         {cancelling === item.id
-                          ? <ActivityIndicator size="small" color={RED} />
-                          : <Text style={styles.cancelBtnText}>✕  I-cancel ang Ride</Text>
+                          ? <ActivityIndicator size="small" color={C.red} />
+                          : <Text style={styles.cancelBtnText}>✕  Cancel Ride</Text>
                         }
                       </TouchableOpacity>
                     )}
 
-                    {/* Rate button — completed lang */}
                     {item.status === 'completed' && (
                       reviewedIds.includes(item.id) ? (
                         <View style={styles.ratedBadge}>
-                          <Text style={styles.ratedText}>⭐  Na-rate mo na ito</Text>
+                          <Text style={styles.ratedText}>⭐  Already rated</Text>
                         </View>
                       ) : (
                         <TouchableOpacity
@@ -374,19 +366,18 @@ export default function MyRidesScreen({ navigation }) {
                           onPress={() => setRatingModal({ visible: true, rideId: item.id })}
                           activeOpacity={0.8}
                         >
-                          <Text style={styles.rateBtnText}>⭐  I-rate ang Ride</Text>
+                          <Text style={styles.rateBtnText}>⭐  Rate this Ride</Text>
                         </TouchableOpacity>
                       )
                     )}
 
-                    {/* Book ulit — cancelled lang */}
                     {item.status === 'cancelled' && (
                       <TouchableOpacity
                         style={styles.reorderBtn}
                         onPress={() => navigation.navigate('Pasakay')}
                         activeOpacity={0.8}
                       >
-                        <Text style={styles.reorderBtnText}>🛵  Mag-book Ulit</Text>
+                        <Text style={styles.reorderBtnText}>🛵  Book Again</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -398,7 +389,7 @@ export default function MyRidesScreen({ navigation }) {
 
         {filteredRides.length > 0 && activeTab !== 'Cancelled' && (
           <TouchableOpacity style={styles.fabRow} onPress={() => navigation.navigate('Pasakay')} activeOpacity={0.85}>
-            <Text style={styles.fabText}>+ Bagong Ride</Text>
+            <Text style={styles.fabText}>+ New Ride</Text>
           </TouchableOpacity>
         )}
 
@@ -410,105 +401,117 @@ export default function MyRidesScreen({ navigation }) {
         onClose={() => setRatingModal({ visible: false, rideId: null })}
         serviceType="pasakay"
         serviceId={ratingModal.rideId}
-        onSuccess={fetchRides}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['myRides'] })}
+      />
+      <ConfirmationModal
+        visible={cancelModal.visible}
+        title="Cancel Booking"
+        message="Are you sure you want to cancel this booking? This action cannot be undone."
+        icon="⚠️"
+        confirmText="Yes, Cancel"
+        confirmColor="#EF4444"
+        onConfirm={executeCancel}
+        onCancel={() => setCancelModal({ visible: false, id: null })}
+        critical={true}
       />
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  safe:         { flex: 1, backgroundColor: '#f8fafc' },
-  centered:     { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
-  loadingText:  { fontSize: 13, color: '#64748b' },
+  safe:        { flex: 1, backgroundColor: C.bg },
+  centered:    { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+  loadingText: { fontSize: 13, color: C.textSub },
 
-  header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: Platform.OS === 'android' ? 48 : 12, paddingBottom: 12, backgroundColor: '#fff', borderBottomWidth: 0.5, borderBottomColor: '#e2e8f0' },
-  backBtn:      { width: 36, height: 36, borderRadius: 10, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
-  backIcon:     { fontSize: 22, color: GREEN, fontWeight: '600', lineHeight: 28 },
-  logoRow:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title:        { fontSize: 17, fontWeight: '700', color: '#0f172a' },
-  refreshBtn:   { width: 36, height: 36, borderRadius: 10, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+  header:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: Platform.OS === 'android' ? 8 : 4, paddingBottom: 12, backgroundColor: C.white, borderBottomWidth: 0.5, borderBottomColor: C.border },
+  backBtn:    { width: 36, height: 36, borderRadius: 10, backgroundColor: C.primaryLt, alignItems: 'center', justifyContent: 'center' },
+  backIcon:   { fontSize: 22, color: C.primary, fontWeight: '600', lineHeight: 28 },
+  logoRow:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title:      { fontSize: 17, fontWeight: '700', color: C.text },
+  refreshBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.primaryLt, alignItems: 'center', justifyContent: 'center' },
 
-  summaryRow:   { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, gap: 6, backgroundColor: '#fff', borderBottomWidth: 0.5, borderBottomColor: '#e2e8f0' },
+  summaryRow:   { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, gap: 6, backgroundColor: C.white, borderBottomWidth: 0.5, borderBottomColor: C.border },
   summaryChip:  { flex: 1, borderRadius: 10, paddingVertical: 8, alignItems: 'center' },
-  summaryCount: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
-  summaryLabel: { fontSize: 9, fontWeight: '600', marginTop: 1 },
+  summaryCount: { fontSize: 16, fontWeight: '700', color: C.text },
+  summaryLabel: { fontSize: 12, fontWeight: '700', marginTop: 1, textTransform: 'uppercase', letterSpacing: 0.4 },
 
-  tabsScroll:   { backgroundColor: '#fff', borderBottomWidth: 0.5, borderBottomColor: '#e2e8f0', maxHeight: 48 },
-  tabsRow:      { paddingHorizontal: 12, paddingVertical: 8, gap: 6, flexDirection: 'row', alignItems: 'center' },
-  tab:          { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 20, backgroundColor: '#f1f5f9', borderWidth: 0.5, borderColor: '#e2e8f0' },
-  tabActive:    { backgroundColor: GREEN, borderColor: GREEN },
-  tabText:      { fontSize: 12, fontWeight: '600', color: '#64748b' },
-  tabTextActive:{ color: '#fff' },
+  tabsScroll: { backgroundColor: C.white, borderBottomWidth: 0.5, borderBottomColor: C.border, maxHeight: 48 },
+  tabsRow:    { paddingHorizontal: 12, paddingVertical: 8, gap: 6, flexDirection: 'row', alignItems: 'center' },
+  tab:        { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 20, backgroundColor: '#F1F5F9', borderWidth: 0.5, borderColor: C.border },
+  tabActive:  { backgroundColor: C.primary, borderColor: C.primary },
+  tabText:    { fontSize: 12, fontWeight: '600', color: C.textSub },
+  tabTextActive: { color: C.white },
 
-  container:    { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
+  container: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
 
-  card:         { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 12, borderWidth: 0.5, borderColor: '#e2e8f0' },
-  cardHeader:   { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  cardTopRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  cardId:       { fontSize: 14, fontWeight: '700', color: '#0f172a' },
-  statusBadge:  { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  statusEmoji:  { fontSize: 11 },
-  statusText:   { fontSize: 11, fontWeight: '700' },
-  expandIcon:   { fontSize: 18, color: '#94a3b8', marginLeft: 8 },
-  dateText:     { fontSize: 11, color: '#94a3b8' },
+  card:       { backgroundColor: C.white, borderRadius: 16, padding: 14, marginBottom: 12, borderWidth: 0.5, borderColor: C.border },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  cardTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  cardId:     { fontSize: 14, fontWeight: '700', color: C.text },
+  statusBadge:{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  statusEmoji:{ fontSize: 12 },
+  statusText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.4 },
+  expandIcon: { fontSize: 18, color: C.textHint, marginLeft: 8 },
+  dateText:   { fontSize: 12, color: C.textHint },
+
+  details: { marginTop: 6 },
 
   progressWrapper: { marginBottom: 10 },
-  progressTrack:   { height: 5, backgroundColor: '#f1f5f9', borderRadius: 10, overflow: 'hidden', marginBottom: 5 },
+  progressTrack:   { height: 5, backgroundColor: '#F1F5F9', borderRadius: 10, overflow: 'hidden', marginBottom: 5 },
   progressFill:    { height: '100%', borderRadius: 10 },
-  progressLabel:   { fontSize: 11, fontWeight: '700' },
+  progressLabel:   { fontSize: 12, fontWeight: '700' },
 
   stepsContainer: { paddingLeft: 2, marginBottom: 4 },
   stepWrapper:    {},
   stepRow:        { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
-  stepDot:        { width: 30, height: 30, borderRadius: 15, backgroundColor: '#f1f5f9', borderWidth: 1.5, borderColor: '#e2e8f0', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  stepDot:        { width: 30, height: 30, borderRadius: 15, backgroundColor: '#F1F5F9', borderWidth: 1.5, borderColor: C.border, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   stepDotText:    { fontSize: 12 },
   stepInfo:       { flex: 1 },
-  stepLabel:      { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
-  stepDesc:       { fontSize: 11, color: '#64748b', marginTop: 1, lineHeight: 16 },
-  stepLine:       { width: 2, height: 14, backgroundColor: '#e2e8f0', marginLeft: 14, marginVertical: 1 },
+  stepLabel:      { fontSize: 13, color: C.textHint, fontWeight: '500' },
+  stepDesc:       { fontSize: 12, color: C.textSub, marginTop: 1, lineHeight: 16 },
+  stepLine:       { width: 2, height: 14, backgroundColor: C.border, marginLeft: 14, marginVertical: 1 },
   nowBadge:       { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
-  nowBadgeText:   { fontSize: 10, fontWeight: '700' },
-  cancelledBox:   { backgroundColor: '#fef2f2', borderRadius: 10, padding: 10, alignItems: 'center' },
-  cancelledText:  { color: RED, fontWeight: '700', fontSize: 13 },
+  nowBadgeText:   { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
+  cancelledBox:   { backgroundColor: '#FEF2F2', borderRadius: 10, padding: 10, alignItems: 'center' },
+  cancelledText:  { color: C.red, fontWeight: '700', fontSize: 13 },
 
-  details:        { marginTop: 6 },
-  divider:        { height: 0.5, backgroundColor: '#f1f5f9', marginVertical: 10 },
+  divider: { height: 0.5, backgroundColor: '#F1F5F9', marginVertical: 10 },
 
   routeRow:       { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 2 },
   routeDot:       { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
-  routeLabel:     { fontSize: 9, color: '#94a3b8', fontWeight: '700', letterSpacing: 0.8 },
-  routeValue:     { fontSize: 13, color: '#0f172a', fontWeight: '500', lineHeight: 18 },
-  routeConnector: { width: 1.5, height: 10, backgroundColor: '#e2e8f0', marginLeft: 4, marginVertical: 2 },
+  routeLabel:     { fontSize: 12, color: C.textHint, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
+  routeValue:     { fontSize: 13, color: C.text, fontWeight: '500', lineHeight: 18 },
+  routeConnector: { width: 1.5, height: 10, backgroundColor: C.border, marginLeft: 4, marginVertical: 2 },
 
-  fareRow:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  fareLabel:      { fontSize: 13, color: '#64748b' },
-  fareValue:      { fontSize: 16, fontWeight: '700', color: GREEN },
+  fareRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  fareLabel: { fontSize: 13, color: C.textSub },
+  fareValue: { fontSize: 16, fontWeight: '700', color: C.primary },
 
-  riderRow:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  riderLabel:     { fontSize: 13, color: '#64748b' },
-  riderValue:     { fontSize: 13, fontWeight: '600', color: '#0f172a' },
+  riderRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  riderLabel:{ fontSize: 13, color: C.textSub },
+  riderValue:{ fontSize: 13, fontWeight: '600', color: C.text },
 
-  codRow:         { backgroundColor: '#f0fdf4', borderRadius: 8, padding: 10, marginBottom: 10 },
-  codText:        { fontSize: 12, color: '#166534' },
+  codRow:  { backgroundColor: C.primaryLt, borderRadius: 8, padding: 10, marginBottom: 10 },
+  codText: { fontSize: 12, color: C.primary },
 
-  cancelBtn:      { borderWidth: 1.5, borderColor: RED, borderRadius: 12, padding: 12, alignItems: 'center', marginBottom: 8 },
-  cancelBtnText:  { color: RED, fontWeight: '700', fontSize: 14 },
+  cancelBtn:     { borderWidth: 1.5, borderColor: C.red, borderRadius: 12, padding: 12, alignItems: 'center', marginBottom: 8 },
+  cancelBtnText: { color: C.red, fontWeight: '700', fontSize: 14 },
 
-  rateBtn:        { backgroundColor: ORANGE, borderRadius: 12, padding: 12, alignItems: 'center', marginTop: 4 },
-  rateBtnText:    { color: '#fff', fontWeight: '700', fontSize: 14 },
-  ratedBadge:     { backgroundColor: '#fefce8', borderRadius: 12, padding: 10, alignItems: 'center', marginTop: 4, borderWidth: 0.5, borderColor: '#fde68a' },
-  ratedText:      { color: '#b45309', fontWeight: '700', fontSize: 13 },
+  rateBtn:     { backgroundColor: C.orange, borderRadius: 12, padding: 12, alignItems: 'center', marginTop: 4 },
+  rateBtnText: { color: C.white, fontWeight: '700', fontSize: 14 },
+  ratedBadge:  { backgroundColor: '#FEFCE8', borderRadius: 12, padding: 10, alignItems: 'center', marginTop: 4, borderWidth: 0.5, borderColor: '#FDE68A' },
+  ratedText:   { color: '#B45309', fontWeight: '700', fontSize: 13 },
 
-  reorderBtn:     { backgroundColor: GREEN, borderRadius: 12, padding: 12, alignItems: 'center', marginTop: 4 },
-  reorderBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  reorderBtn:     { backgroundColor: C.primary, borderRadius: 12, padding: 12, alignItems: 'center', marginTop: 4 },
+  reorderBtnText: { color: C.white, fontWeight: '700', fontSize: 14 },
 
-  empty:          { alignItems: 'center', paddingVertical: 60 },
-  emptyEmoji:     { fontSize: 48, marginBottom: 12 },
-  emptyTitle:     { fontSize: 18, fontWeight: '700', color: '#0f172a', marginBottom: 6 },
-  emptySubtitle:  { fontSize: 13, color: '#64748b', textAlign: 'center', lineHeight: 20, marginBottom: 20, paddingHorizontal: 20 },
-  newBtn:         { backgroundColor: GREEN, paddingHorizontal: 24, paddingVertical: 13, borderRadius: 12 },
-  newBtnText:     { color: '#fff', fontWeight: '700', fontSize: 14 },
+  empty:         { alignItems: 'center', paddingVertical: 60 },
+  emptyEmoji:    { fontSize: 48, marginBottom: 12 },
+  emptyTitle:    { fontSize: 18, fontWeight: '700', color: C.text, marginBottom: 6 },
+  emptySubtitle: { fontSize: 13, color: C.textSub, textAlign: 'center', lineHeight: 20, marginBottom: 20, paddingHorizontal: 20 },
+  newBtn:        { backgroundColor: C.primary, paddingHorizontal: 24, paddingVertical: 13, borderRadius: 12 },
+  newBtnText:    { color: C.white, fontWeight: '700', fontSize: 14 },
 
-  fabRow:         { backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 4, shadowColor: GREEN, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
-  fabText:        { color: '#fff', fontSize: 15, fontWeight: '700' },
+  fabRow:  { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 4, shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
+  fabText: { color: C.white, fontSize: 15, fontWeight: '700' },
 })

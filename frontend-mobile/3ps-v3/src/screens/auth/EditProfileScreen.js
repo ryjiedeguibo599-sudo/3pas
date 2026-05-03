@@ -8,12 +8,13 @@ import {
   ScrollView, KeyboardAvoidingView, Platform,
   SafeAreaView, StatusBar, Image
 } from 'react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as SecureStore from 'expo-secure-store'
 import * as ImagePicker from 'expo-image-picker'
 import API from '../../services/api'
+import ConfirmationModal from '../../components/ConfirmationModal'
 
-const PRIMARY = '#0F766E'
-const BG      = '#F0FDFA'
+const PRIMARY = '#2563EB'
+const BG      = '#F8FAFF'
 
 export default function EditProfileScreen({ route, navigation }) {
   const { user } = route.params
@@ -22,6 +23,28 @@ export default function EditProfileScreen({ route, navigation }) {
   const [imgUri,    setImgUri]    = useState(user?.profile_image ?? null)
   const [newImg,    setNewImg]    = useState(null)
   const [loading,   setLoading]   = useState(false)
+  const [deleteModal, setDeleteModal] = useState(false)
+
+  const handleDeleteAccount = () => setDeleteModal(true)
+
+  const executeDelete = async () => {
+    setDeleteModal(false)
+    try {
+      setLoading(true)
+      const token = await SecureStore.getItemAsync('token')
+      await API.delete('/auth/account', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      await SecureStore.deleteItemAsync('token')
+      await SecureStore.deleteItemAsync('user')
+      await SecureStore.deleteItemAsync('service_type')
+      Alert.alert('Account Deleted', 'Your account has been deleted.')
+      navigation.replace('LoginWelcome')
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Could not delete account.')
+      setLoading(false)
+    }
+  }
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
@@ -42,7 +65,7 @@ export default function EditProfileScreen({ route, navigation }) {
     }
     try {
       setLoading(true)
-      const token = await AsyncStorage.getItem('token')
+      const token = await SecureStore.getItemAsync('token')
       const formData = new FormData()
       formData.append('phone', contact)
       if (newImg) {
@@ -53,7 +76,7 @@ export default function EditProfileScreen({ route, navigation }) {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
       })
 
-      await AsyncStorage.setItem('user', JSON.stringify(res.data.user))
+      await SecureStore.setItemAsync('user', JSON.stringify(res.data.user))
       Alert.alert('Tagumpay! ✅', 'Na-update na ang iyong profile.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ])
@@ -158,8 +181,24 @@ export default function EditProfileScreen({ route, navigation }) {
           <TouchableOpacity style={styles.btnCancel} onPress={() => navigation.goBack()}>
             <Text style={styles.btnCancelTxt}>Kanselahin</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity style={styles.btnDelete} onPress={handleDeleteAccount}>
+            <Text style={styles.btnDeleteTxt}>Delete Account</Text>
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <ConfirmationModal
+        visible={deleteModal}
+        title="Delete Account"
+        message="Are you sure you want to delete your account? All your data will be permanently removed."
+        icon="🚨"
+        confirmText="Yes, Delete"
+        confirmColor="#EF4444"
+        onConfirm={executeDelete}
+        onCancel={() => setDeleteModal(false)}
+        critical={true}
+      />
     </SafeAreaView>
   )
 }
@@ -196,7 +235,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden', borderWidth: 3, borderColor: PRIMARY,
   },
   avatarImg:       { width: '100%', height: '100%' },
-  avatarFallback:  { flex: 1, backgroundColor: '#CCFBF1', alignItems: 'center', justifyContent: 'center' },
+  avatarFallback:  { flex: 1, backgroundColor: '#BFDBFE', alignItems: 'center', justifyContent: 'center' },
   avatarInitials:  { fontSize: 32, fontWeight: '700', color: PRIMARY },
   cameraOverlay: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
@@ -246,4 +285,6 @@ const styles = StyleSheet.create({
   btnSaveTxt:    { color: '#fff', fontSize: 15, fontWeight: '700' },
   btnCancel:     { marginTop: 12, alignItems: 'center', paddingVertical: 10 },
   btnCancelTxt:  { color: '#64748B', fontSize: 13, fontWeight: '500' },
+  btnDelete:     { marginTop: 32, alignItems: 'center', paddingVertical: 10 },
+  btnDeleteTxt:  { color: '#EF4444', fontSize: 13, fontWeight: '700' },
 })

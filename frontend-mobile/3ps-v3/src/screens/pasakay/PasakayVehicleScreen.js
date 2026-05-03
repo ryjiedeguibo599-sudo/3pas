@@ -1,68 +1,24 @@
 import React, { useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  SafeAreaView, StatusBar, ScrollView, Platform, Alert
+  StatusBar, ScrollView, Platform, Alert,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import API from '../../services/api'
+import { theme } from '../../theme/padulongTheme'
 
-const getVehicles = (passengers, cargo) => {
-  const isBulky   = cargo === 'bulky'
-  const isGroup   = passengers === '2-3'
-
-  return [
-    {
-      key: 'motorcycle',
-      name: 'Motorsiklo',
-      emoji: '🏍️',
-      tagline: 'Pinakamabilis na pagpipilian',
-      features: ['1 pasahero', 'Maliit o walang karga', 'Best para sa mabilis na biyahe'],
-      baseFare: 50,
-      ratePerKm: 7,
-      color: '#0F766E',
-      bgColor: '#F0FDFA',
-      borderColor: '#CCFBF1',
-      disabled: isGroup || isBulky,
-      disabledReason: isGroup
-        ? 'Hindi angkop para sa 2–3 pasahero'
-        : isBulky
-        ? 'Hindi angkop para sa mabigat na karga'
-        : null,
-      recommended: !isGroup && !isBulky,
-      recommendedLabel: 'Pinakamabilis',
-    },
-    {
-      key: 'tricycle',
-      name: 'Trisiklo',
-      emoji: '🛺',
-      tagline: 'Komportable para sa grupo',
-      features: ['1–3 pasahero', 'Katamtamang karga', 'Angkop sa lokal na biyahe'],
-      baseFare: 60,
-      ratePerKm: 9,
-      color: '#1D4ED8',
-      bgColor: '#EFF6FF',
-      borderColor: '#BFDBFE',
-      disabled: isBulky,
-      disabledReason: isBulky ? 'Hindi angkop para sa mabigat/malaking karga' : null,
-      recommended: isGroup && !isBulky,
-      recommendedLabel: 'Inirerekomenda para sa iyong biyahe',
-    },
-    {
-      key: 'bao_bao',
-      name: 'Bao-bao',
-      emoji: '🚐',
-      tagline: 'Para sa mabigat na karga',
-      features: ['1–5 pasahero', 'Malaking karga', 'Pinaka-maluwag na sasakyan'],
-      baseFare: 80,
-      ratePerKm: 12,
-      color: '#D97706',
-      bgColor: '#FFFBEB',
-      borderColor: '#FDE68A',
-      disabled: false,
-      disabledReason: null,
-      recommended: isBulky,
-      recommendedLabel: isBulky ? 'Inirerekomenda para sa iyong karga' : 'Para sa malaking grupo',
-    },
-  ]
+const C = {
+  primary: theme.colors.primary,
+  primaryLt: theme.colors.primarySoft,
+  primaryMd: '#FFD4AE',
+  text: theme.colors.text,
+  textSub: theme.colors.textSub,
+  textHint: theme.colors.textHint,
+  border: theme.colors.border,
+  bg: theme.colors.background,
+  white: theme.colors.surface,
+  orange:    '#F59E0B',
+  red:       theme.colors.danger,
 }
 
 const calcFare = (base, rate, distKm) => {
@@ -70,255 +26,296 @@ const calcFare = (base, rate, distKm) => {
   return Math.min(500, Math.max(base, Math.round(base + distKm * rate)))
 }
 
+const getVehicles = (passengers, cargo) => {
+  const num     = Number(passengers)
+  const isBulky = cargo === 'bulky'
+
+  return [
+    {
+      key:      'motorcycle',
+      name:     'Motorcycle',
+      emoji:    '🏍️',
+      tagline:  'Solo rides, fastest on the road',
+      capacity: 1,
+      features: ['1 passenger only', 'Light cargo', 'Quickest trips'],
+      baseFare: 50,
+      ratePerKm: 7,
+      color:       '#16A34A',
+      bgColor:     '#F0FDF4',
+      borderColor: '#BBF7D0',
+      disabled: num > 1 || isBulky,
+      disabledReason:
+        num > 1   ? `Fits only 1 passenger — you need ${num}`
+        : isBulky ? 'Cannot carry large or bulky cargo'
+        : null,
+      recommended:      num === 1 && !isBulky,
+      recommendedLabel: 'Fastest for solo',
+    },
+    {
+      key:      'tricycle',
+      name:     'Tricycle',
+      emoji:    '🛺',
+      tagline:  'Comfortable for small groups',
+      capacity: 3,
+      features: ['Up to 3 passengers', 'Small cargo OK', 'Best for local trips'],
+      baseFare:  60,
+      ratePerKm: 9,
+      color:       '#D97706',
+      bgColor:     C.primaryLt,
+      borderColor: C.primaryMd,
+      disabled: num > 3 || isBulky,
+      disabledReason:
+        num > 3   ? `Fits up to 3 passengers — you need ${num}`
+        : isBulky ? 'Cannot carry large or bulky cargo'
+        : null,
+      recommended:      num >= 2 && num <= 3 && !isBulky,
+      recommendedLabel: 'Best for your group',
+    },
+    {
+      key:      'bao_bao',
+      name:     'Bao-bao',
+      emoji:    '🚐',
+      tagline:  'Large groups & heavy cargo',
+      capacity: 5,
+      features: ['Up to 5 passengers', 'Any cargo size', 'Most spacious option'],
+      baseFare:  80,
+      ratePerKm: 12,
+      color:       '#D97706',
+      bgColor:     '#FFFBEB',
+      borderColor: '#FDE68A',
+      disabled:         false,
+      disabledReason:   null,
+      recommended:      num >= 4 || isBulky,
+      recommendedLabel: num >= 4 ? 'Only option for your group' : 'Recommended for large cargo',
+    },
+  ]
+}
+
 export default function PasakayVehicleScreen({ navigation, route }) {
-  const { pickup, dropoff, pickupCoords, dropoffCoords, passengers, cargo, distanceKm } = route.params || {}
+  const {
+    pickup, dropoff, pickupCoords, dropoffCoords,
+    passengers, cargo, distanceKm,
+  } = route.params || {}
+
   const [selected, setSelected] = useState(null)
-  const [loading, setLoading]   = useState(false)
+  const [loading]  = useState(false)
 
-  const vehicles = getVehicles(passengers, cargo)
+  const paxNum   = Number(passengers)
+  const vehicles = getVehicles(paxNum, cargo)
 
-  // Auto-select recommended vehicle
   React.useEffect(() => {
     const rec = vehicles.find(v => v.recommended && !v.disabled)
     if (rec) setSelected(rec.key)
   }, [])
 
+  const selectedVehicle = vehicles.find(v => v.key === selected)
+  const selectedFare    = selectedVehicle
+    ? calcFare(selectedVehicle.baseFare, selectedVehicle.ratePerKm, distanceKm)
+    : 0
+
   const handleBook = async () => {
     if (!selected) {
-      Alert.alert('Pumili ng Sasakyan', 'Mangyaring pumili ng uri ng sasakyan.')
+      Alert.alert('Select a Vehicle', 'Please choose a vehicle type to continue.')
       return
     }
-    const vehicle = vehicles.find(v => v.key === selected)
-    const fare    = calcFare(vehicle.baseFare, vehicle.ratePerKm, distanceKm)
-
-    navigation.navigate('PasakayMatching', {
+    navigation.navigate('PasakayReview', {
       pickup, dropoff, pickupCoords, dropoffCoords,
-      passengers, cargo,
-      vehicleType: selected,
-      vehicleName: vehicle.name,
-      vehicleEmoji: vehicle.emoji,
-      fare,
+      passengers: paxNum, cargo,
+      vehicleType:  selected,
+      vehicleName:  selectedVehicle.name,
+      vehicleEmoji: selectedVehicle.emoji,
+      fare:         selectedFare,
       distanceKm,
     })
   }
 
-  const selectedVehicle = vehicles.find(v => v.key === selected)
+  const paxLabel   = paxNum === 1 ? '🧍 1 passenger' : `👥 ${paxNum} passengers`
+  const cargoLabel = cargo === 'none' ? '' : cargo === 'small' ? ' · 🎒 Small cargo' : ' · 📦 Large cargo'
+  const distLabel  = distanceKm ? ` · 📍 ~${distanceKm.toFixed(1)} km` : ''
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F0FDFA" />
+    <SafeAreaView style={s.safe}>
+      <StatusBar barStyle="dark-content" backgroundColor={C.white} />
 
-      {/* HEADER */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backIcon}>‹</Text>
+      {/* Nav bar */}
+      <View style={s.navBar}>
+        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+          <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Piliin ang Sasakyan</Text>
-        <View style={{ width: 36 }} />
+        <View style={{ flex: 1 }} />
       </View>
 
-      {/* PROGRESS */}
-      <View style={styles.progressBar}>
-        {[1,2,3,4].map((step, i) => (
-          <React.Fragment key={step}>
-            <View style={[styles.progressStep, step <= 3 && styles.progressDone]}>
-              <Text style={styles.progressStepText}>{step <= 2 ? '✓' : step}</Text>
-            </View>
-            {i < 3 && <View style={[styles.progressLine, step < 3 && { backgroundColor: '#0F766E' }]} />}
-          </React.Fragment>
-        ))}
+      {/* Trip summary bar */}
+      <View style={s.summaryBar}>
+        <Text style={s.summaryText}>{paxLabel}{cargoLabel}{distLabel}</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* TRIP SUMMARY PILL */}
-        <View style={styles.summaryPill}>
-          <Text style={styles.summaryText}>
-            {passengers === '1' ? '🧍 1 tao' : '👥 2–3 tao'}
-            {'  ·  '}
-            {cargo === 'none' ? '🚫 Walang karga' : cargo === 'small' ? '🎒 Maliit na karga' : '📦 Bulky na karga'}
-          </Text>
-        </View>
+        <Text style={s.heading}>Choose your vehicle</Text>
 
-        {/* VEHICLES */}
         {vehicles.map((v) => {
           const fare       = calcFare(v.baseFare, v.ratePerKm, distanceKm)
           const isSelected = selected === v.key
+          const isDisabled = v.disabled
 
           return (
             <TouchableOpacity
               key={v.key}
               style={[
-                styles.vehicleCard,
-                { borderColor: v.borderColor, backgroundColor: v.bgColor },
+                s.vehicleCard,
+                { borderColor: v.borderColor },
                 isSelected && { borderColor: v.color, borderWidth: 2 },
-                v.disabled && styles.vehicleDisabled,
+                isDisabled  && s.vehicleCardDisabled,
               ]}
-              onPress={() => !v.disabled && setSelected(v.key)}
-              activeOpacity={v.disabled ? 1 : 0.75}
+              onPress={() => !isDisabled && setSelected(v.key)}
+              activeOpacity={isDisabled ? 1 : 0.75}
             >
-              {/* RECOMMENDED BADGE */}
-              {v.recommended && !v.disabled && (
-                <View style={[styles.recBadge, { backgroundColor: v.color }]}>
-                  <Text style={styles.recBadgeText}>⭐ {v.recommendedLabel}</Text>
+              {/* Recommended badge */}
+              {v.recommended && !isDisabled && (
+                <View style={[s.recBadge, { backgroundColor: v.color }]}>
+                  <Text style={s.recBadgeText}>⭐ {v.recommendedLabel}</Text>
                 </View>
               )}
 
-              <View style={styles.vehicleTop}>
-                {/* EMOJI + NAME */}
-                <View style={styles.vehicleLeft}>
-                  <Text style={[styles.vehicleEmoji, v.disabled && { opacity: 0.4 }]}>{v.emoji}</Text>
-                  <View>
-                    <Text style={[styles.vehicleName, v.disabled && { color: '#94A3B8' }]}>
-                      {v.name}
-                    </Text>
-                    <Text style={[styles.vehicleTagline, v.disabled && { color: '#CBD5E1' }]}>
-                      {v.tagline}
-                    </Text>
+              {/* Card body */}
+              <View style={[s.cardBody, { backgroundColor: v.bgColor }]}>
+                {/* Left: emoji + info */}
+                <View style={[s.vehicleLeft, isDisabled && { opacity: 0.45 }]}>
+                  <Text style={s.vehicleEmoji}>{v.emoji}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.vehicleName, { color: v.color }]}>{v.name}</Text>
+                    <Text style={s.vehicleTagline}>{v.tagline}</Text>
                   </View>
                 </View>
 
-                {/* FARE + SELECT */}
-                <View style={styles.vehicleRight}>
-                  <Text style={[styles.vehicleFare, { color: v.disabled ? '#CBD5E1' : v.color }]}>
+                {/* Right: fare + selector */}
+                <View style={s.vehicleRight}>
+                  <Text style={[s.vehicleFare, { color: isDisabled ? C.textHint : v.color }]}>
                     ₱{fare}
                   </Text>
-                  {!v.disabled && (
+                  {!isDisabled && (
                     <View style={[
-                      styles.selectCircle,
-                      isSelected && { backgroundColor: v.color, borderColor: v.color }
+                      s.selectCircle,
+                      isSelected && { backgroundColor: v.color, borderColor: v.color },
                     ]}>
-                      {isSelected && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>✓</Text>}
+                      {isSelected && <Text style={s.selectCheck}>✓</Text>}
                     </View>
                   )}
                 </View>
               </View>
 
-              {/* FEATURES */}
-              {!v.disabled && (
-                <View style={styles.featuresRow}>
+              {/* Capacity row */}
+              <View style={s.capacityRow}>
+                <View style={s.capacityDots}>
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <View
+                      key={n}
+                      style={[
+                        s.capDot,
+                        n <= v.capacity     && { backgroundColor: isDisabled ? C.textHint : v.color },
+                        n <= v.capacity && n <= paxNum && !isDisabled && { opacity: 1 },
+                        n <= v.capacity && n > paxNum  && !isDisabled && { opacity: 0.3 },
+                      ]}
+                    />
+                  ))}
+                </View>
+                <Text style={[s.capacityLabel, { color: isDisabled ? C.textHint : v.color }]}>
+                  Max {v.capacity} pax
+                </Text>
+              </View>
+
+              {/* Features or disabled reason */}
+              {!isDisabled ? (
+                <View style={s.featuresRow}>
                   {v.features.map((f, i) => (
-                    <View key={i} style={[styles.featureChip, { borderColor: v.borderColor }]}>
-                      <Text style={[styles.featureText, { color: v.color }]}>{f}</Text>
+                    <View key={i} style={[s.featureChip, { borderColor: v.borderColor, backgroundColor: 'rgba(255,255,255,0.8)' }]}>
+                      <Text style={[s.featureText, { color: v.color }]}>{f}</Text>
                     </View>
                   ))}
                 </View>
-              )}
-
-              {/* DISABLED REASON */}
-              {v.disabled && (
-                <View style={styles.disabledNote}>
-                  <Text style={styles.disabledNoteText}>⚠️ {v.disabledReason}</Text>
+              ) : (
+                <View style={s.disabledBox}>
+                  <Text style={s.disabledText}>🚫  {v.disabledReason}</Text>
                 </View>
               )}
             </TouchableOpacity>
           )
         })}
 
-        {/* BOOK BUTTON */}
+        <View style={{ height: 12 }} />
+      </ScrollView>
+
+      {/* Footer */}
+      <View style={s.footer}>
+        {selectedVehicle && (
+          <View style={s.fareRow}>
+            <Text style={s.fareLabel}>{selectedVehicle.emoji} {selectedVehicle.name}</Text>
+            <Text style={s.fareAmount}>₱{selectedFare}</Text>
+          </View>
+        )}
         <TouchableOpacity
-          style={[styles.bookBtn, !selected && styles.bookBtnDisabled]}
+          style={[s.bookBtn, !selected && s.bookBtnDisabled]}
           onPress={handleBook}
           disabled={!selected || loading}
           activeOpacity={0.85}
         >
-          <Text style={styles.bookBtnText}>
-            {selected
-              ? `Hanapin ang ${selectedVehicle?.name} →`
-              : 'Pumili ng Sasakyan'}
+          <Text style={s.bookBtnText}>
+            {selected ? `Find a ${selectedVehicle?.name} →` : 'Select a Vehicle to Continue'}
           </Text>
         </TouchableOpacity>
-
-        <View style={{ height: 20 }} />
-      </ScrollView>
+      </View>
     </SafeAreaView>
   )
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F0FDFA' },
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: C.bg },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 8 : 4,
-    paddingBottom: 12,
-  },
-  backBtn: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: '#CCFBF1', alignItems: 'center', justifyContent: 'center',
-  },
-  backIcon: { fontSize: 22, color: '#0F766E', fontWeight: '700', lineHeight: 28 },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#134E4A' },
+  navBar:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: Platform.OS === 'android' ? 8 : 4, paddingBottom: 8, backgroundColor: C.white },
+  backBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.primaryLt, alignItems: 'center', justifyContent: 'center' },
+  backIcon:{ fontSize: 22, color: C.primary, fontWeight: '700', lineHeight: 28 },
 
-  progressBar: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 32, paddingBottom: 16,
-  },
-  progressStep: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center',
-  },
-  progressDone: { backgroundColor: '#0F766E' },
-  progressStepText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-  progressLine: { flex: 1, height: 2, backgroundColor: '#CCFBF1' },
+  summaryBar:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: C.primaryLt, borderBottomWidth: 0.5, borderBottomColor: C.primaryMd },
+  summaryText: { fontSize: 13, color: C.primary, fontWeight: '600' },
 
-  scroll: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 20 },
+  scroll:   { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16 },
+  heading:  { fontSize: 18, fontWeight: '800', color: C.text, marginBottom: 14 },
 
-  summaryPill: {
-    backgroundColor: '#fff', borderRadius: 20, borderWidth: 1,
-    borderColor: '#CCFBF1', paddingVertical: 8, paddingHorizontal: 16,
-    alignSelf: 'flex-start', marginBottom: 20,
-  },
-  summaryText: { fontSize: 12, color: '#0F766E', fontWeight: '600' },
+  vehicleCard:         { borderRadius: 18, borderWidth: 1.5, marginBottom: 14, overflow: 'hidden' },
+  vehicleCardDisabled: { opacity: 0.6 },
 
-  vehicleCard: {
-    borderRadius: 18, borderWidth: 1.5,
-    marginBottom: 14, padding: 16,
-    overflow: 'hidden',
-  },
-  vehicleDisabled: { opacity: 0.55 },
+  recBadge:     { paddingHorizontal: 12, paddingVertical: 5 },
+  recBadgeText: { color: C.white, fontSize: 11, fontWeight: '700' },
 
-  recBadge: {
-    alignSelf: 'flex-start', borderRadius: 20,
-    paddingHorizontal: 10, paddingVertical: 4,
-    marginBottom: 12,
-  },
-  recBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-
-  vehicleTop: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 12,
-  },
+  cardBody:    { flexDirection: 'row', alignItems: 'center', padding: 14, paddingBottom: 10 },
   vehicleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  vehicleEmoji: { fontSize: 36 },
-  vehicleName: { fontSize: 16, fontWeight: '700', color: '#134E4A', marginBottom: 2 },
-  vehicleTagline: { fontSize: 12, color: '#64748B' },
-  vehicleRight: { alignItems: 'flex-end', gap: 8 },
-  vehicleFare: { fontSize: 20, fontWeight: '800' },
-  selectCircle: {
-    width: 24, height: 24, borderRadius: 12,
-    borderWidth: 2, borderColor: '#CCFBF1',
-    alignItems: 'center', justifyContent: 'center',
-  },
+  vehicleEmoji:  { fontSize: 38 },
+  vehicleName:   { fontSize: 17, fontWeight: '800', marginBottom: 2 },
+  vehicleTagline:{ fontSize: 12, color: C.textSub },
+  vehicleRight:  { alignItems: 'flex-end', gap: 8 },
+  vehicleFare:   { fontSize: 22, fontWeight: '800' },
+  selectCircle:  { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: C.border, alignItems: 'center', justifyContent: 'center', backgroundColor: C.white },
+  selectCheck:   { color: C.white, fontSize: 13, fontWeight: '800' },
 
-  featuresRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  featureChip: {
-    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: 1, backgroundColor: 'rgba(255,255,255,0.7)',
-  },
+  capacityRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingBottom: 10 },
+  capacityDots:  { flexDirection: 'row', gap: 4 },
+  capDot:        { width: 14, height: 14, borderRadius: 7, backgroundColor: C.border },
+  capacityLabel: { fontSize: 11, fontWeight: '700' },
+
+  featuresRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 14, paddingBottom: 14 },
+  featureChip: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1 },
   featureText: { fontSize: 11, fontWeight: '600' },
 
-  disabledNote: {
-    backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: 10,
-    padding: 8, marginTop: 4,
-  },
-  disabledNoteText: { fontSize: 12, color: '#94A3B8', fontStyle: 'italic' },
+  disabledBox:  { marginHorizontal: 14, marginBottom: 14, backgroundColor: 'rgba(255,255,255,0.6)', borderRadius: 10, padding: 10 },
+  disabledText: { fontSize: 12, color: C.textHint, fontStyle: 'italic' },
 
-  bookBtn: {
-    backgroundColor: '#0F766E', borderRadius: 14,
-    paddingVertical: 15, alignItems: 'center', marginTop: 8,
-  },
-  bookBtnDisabled: { backgroundColor: '#99F6E4' },
-  bookBtnText: { color: '#fff', fontSize: 16, fontWeight: '700', letterSpacing: 0.3 },
+  footer:      { paddingHorizontal: 16, paddingBottom: Platform.OS === 'android' ? 20 : 32, paddingTop: 12, backgroundColor: C.white, borderTopWidth: 0.5, borderTopColor: C.border, gap: 8 },
+  fareRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 },
+  fareLabel:   { fontSize: 14, fontWeight: '600', color: C.textSub },
+  fareAmount:  { fontSize: 20, fontWeight: '800', color: C.primary },
+
+  bookBtn:         { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center', shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  bookBtnDisabled: { backgroundColor: C.primaryMd, elevation: 0, shadowOpacity: 0 },
+  bookBtnText:     { color: C.white, fontSize: 16, fontWeight: '700' },
 })

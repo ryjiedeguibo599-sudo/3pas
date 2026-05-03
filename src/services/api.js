@@ -2,7 +2,7 @@ import axios from 'axios'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 const API = axios.create({
-  baseURL: 'https://threepas-backend.onrender.com/api'
+  baseURL: 'http://192.168.1.3:5000/api'
 })
 
 API.interceptors.request.use(async (config) => {

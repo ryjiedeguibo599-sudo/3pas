@@ -1,20 +1,36 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  SafeAreaView, StatusBar, ScrollView, Animated,
-  Linking, Alert, Platform
+  StatusBar, ScrollView, Animated,
+  Linking, Alert, Platform,
 } from 'react-native'
-import MapView, { Marker, Polyline } from 'react-native-maps'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps'
 import { io } from 'socket.io-client'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as SecureStore from 'expo-secure-store'
 import API from '../../services/api'
 import { API_URL } from '../../services/api'
+import ConfirmationModal from '../../components/ConfirmationModal'
+
+const C = {
+  primary:   '#2563EB',
+  primaryLt: '#EFF6FF',
+  primaryMd: '#BFDBFE',
+  text:      '#0F172A',
+  textSub:   '#64748B',
+  textHint:  '#94A3B8',
+  border:    '#E2E8F0',
+  bg:        '#F8FAFF',
+  white:     '#FFFFFF',
+  green:     '#16A34A',
+  red:       '#EF4444',
+}
 
 const STATUS_INFO = {
-  accepted:   { label: 'Driver Accepted',  emoji: '🔵', color: '#1D4ED8', bg: '#EFF6FF', desc: 'Papunta na ang driver sa iyong pickup.' },
-  on_the_way: { label: 'On the Way',       emoji: '🛵', color: '#0F766E', bg: '#F0FDFA', desc: 'Malapit na ang driver!' },
-  completed:  { label: 'Completed',        emoji: '✅', color: '#16A34A', bg: '#F0FDF4', desc: 'Tapos na ang iyong biyahe.' },
-  cancelled:  { label: 'Cancelled',        emoji: '❌', color: '#EF4444', bg: '#FEF2F2', desc: 'Na-cancel ang ride.' },
+  accepted:   { label: 'Driver Accepted', emoji: '🔵', color: C.primary,  bg: C.primaryLt, desc: 'Your driver is on the way to pickup.' },
+  on_the_way: { label: 'On the Way',      emoji: '🛵', color: C.primary,  bg: C.primaryLt, desc: 'Your driver is nearby!' },
+  completed:  { label: 'Completed',       emoji: '✅', color: C.green,    bg: '#F0FDF4',   desc: 'Your trip is complete.' },
+  cancelled:  { label: 'Cancelled',       emoji: '❌', color: C.red,      bg: '#FEF2F2',   desc: 'Ride was cancelled.' },
 }
 
 export default function PasakayProviderScreen({ navigation, route }) {
@@ -23,10 +39,11 @@ export default function PasakayProviderScreen({ navigation, route }) {
     provider: initialProvider, vehicleName, vehicleEmoji
   } = route.params || {}
 
-  const [rideStatus, setRideStatus]   = useState('accepted')
-  const [provider, setProvider]       = useState(initialProvider || null)
+  const [rideStatus, setRideStatus]       = useState('accepted')
+  const [provider, setProvider]           = useState(initialProvider || null)
   const [providerCoords, setProviderCoords] = useState(null)
-  const [cancelling, setCancelling]   = useState(false)
+  const [cancelling, setCancelling]       = useState(false)
+  const [cancelModalVisible, setCancelModalVisible] = useState(false)
   const pulseAnim = useRef(new Animated.Value(1)).current
   const socketRef = useRef(null)
 
@@ -39,35 +56,26 @@ export default function PasakayProviderScreen({ navigation, route }) {
 
   useEffect(() => {
     connectSocket()
-    startPulse()
-    return () => { if (socketRef.current) socketRef.current.disconnect() }
-  }, [])
-
-  const startPulse = () => {
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.08, duration: 700, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1,    duration: 700, useNativeDriver: true }),
       ])
     ).start()
-  }
+    return () => { if (socketRef.current) socketRef.current.disconnect() }
+  }, [])
 
   const connectSocket = async () => {
-    const token = await AsyncStorage.getItem('token')
+    const token = await SecureStore.getItemAsync('token')
     const socket = io(API_URL, { auth: { token }, transports: ['websocket'] })
     socketRef.current = socket
-
     socket.on('connect', () => socket.emit('join_ride_room', { rideId }))
-
     socket.on('ride_status_update', (data) => {
       setRideStatus(data.status)
       if (data.status === 'completed') {
-        navigation.replace('WaitingPasakay', {
-          rideId, pickup, dropoff, fare, distanceKm
-        })
+        navigation.replace('WaitingPasakay', { rideId, pickup, dropoff, fare, distanceKm })
       }
     })
-
     socket.on('provider_location', (data) => {
       setProviderCoords({ latitude: data.latitude, longitude: data.longitude })
     })
@@ -78,29 +86,20 @@ export default function PasakayProviderScreen({ navigation, route }) {
     Linking.openURL(`tel:${provider.phone}`)
   }
 
-  const handleCancel = () => {
-    Alert.alert(
-      'I-cancel ang Ride?',
-      'Maaari kang ma-charge ng cancellation fee. Itutuloy?',
-      [
-        { text: 'Hindi', style: 'cancel' },
-        {
-          text: 'Oo, I-cancel', style: 'destructive',
-          onPress: async () => {
-            try {
-              setCancelling(true)
-              await API.patch(`/pasakay/rides/${rideId}/cancel`)
-              if (socketRef.current) socketRef.current.disconnect()
-              navigation.replace('Home')
-            } catch {
-              Alert.alert('Error', 'Hindi ma-cancel ngayon. Subukan ulit.')
-            } finally {
-              setCancelling(false)
-            }
-          }
-        }
-      ]
-    )
+  const handleCancel = () => setCancelModalVisible(true)
+
+  const executeCancel = async () => {
+    setCancelModalVisible(false)
+    try {
+      setCancelling(true)
+      await API.patch(`/pasakay/rides/${rideId}/cancel`)
+      if (socketRef.current) socketRef.current.disconnect()
+      navigation.replace('Home')
+    } catch {
+      Alert.alert('Error', 'Unable to cancel right now. Please try again.')
+    } finally {
+      setCancelling(false)
+    }
   }
 
   const statusInfo = STATUS_INFO[rideStatus] || STATUS_INFO.accepted
@@ -112,237 +111,179 @@ export default function PasakayProviderScreen({ navigation, route }) {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F0FDFA" />
+    <SafeAreaView style={s.safe}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-      {/* MAP */}
-      <View style={styles.mapContainer}>
+      {/* Map */}
+      <View style={s.mapContainer}>
         <MapView
           style={StyleSheet.absoluteFillObject}
+          provider={PROVIDER_GOOGLE}
           initialRegion={DEFAULT_REGION}
           showsUserLocation
         >
           {providerCoords && (
             <Marker coordinate={providerCoords} anchor={{ x: 0.5, y: 0.5 }}>
-              <Animated.View style={[styles.driverMarker, { transform: [{ scale: pulseAnim }] }]}>
+              <Animated.View style={[s.driverMarker, { transform: [{ scale: pulseAnim }] }]}>
                 <Text style={{ fontSize: 24 }}>{vehicleEmoji || '🛺'}</Text>
               </Animated.View>
             </Marker>
           )}
         </MapView>
 
-        {/* BACK BUTTON */}
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.navigate('Home')}>
-          <Text style={styles.backIcon}>🏠</Text>
+        <TouchableOpacity style={s.homeBtn} onPress={() => navigation.navigate('Home')}>
+          <Text style={s.homeBtnIcon}>🏠</Text>
         </TouchableOpacity>
       </View>
 
-      {/* BOTTOM SHEET */}
-      <ScrollView style={styles.sheet} showsVerticalScrollIndicator={false}>
+      {/* Bottom sheet */}
+      <ScrollView style={s.sheet} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
 
-        {/* STATUS BANNER */}
-        <View style={[styles.statusBanner, { backgroundColor: statusInfo.bg, borderColor: statusInfo.color + '30' }]}>
-          <Text style={styles.statusEmoji}>{statusInfo.emoji}</Text>
+        {/* Status */}
+        <View style={[s.statusBanner, { backgroundColor: statusInfo.bg, borderColor: statusInfo.color + '30' }]}>
+          <Text style={s.statusEmoji}>{statusInfo.emoji}</Text>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.statusLabel, { color: statusInfo.color }]}>{statusInfo.label}</Text>
-            <Text style={styles.statusDesc}>{statusInfo.desc}</Text>
+            <Text style={[s.statusLabel, { color: statusInfo.color }]}>{statusInfo.label}</Text>
+            <Text style={s.statusDesc}>{statusInfo.desc}</Text>
           </View>
         </View>
 
-        {/* PROVIDER CARD */}
+        {/* Driver card */}
         {provider && (
-          <View style={styles.providerCard}>
-            <View style={styles.providerTop}>
-              {/* AVATAR */}
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{getInitials(provider.name)}</Text>
+          <View style={s.providerCard}>
+            <View style={s.providerTop}>
+              <View style={s.avatar}>
+                <Text style={s.avatarText}>{getInitials(provider.name)}</Text>
               </View>
-
-              {/* INFO */}
-              <View style={styles.providerInfo}>
-                <Text style={styles.providerName}>{provider.name || 'Driver'}</Text>
-                <View style={styles.providerMeta}>
-                  <Text style={styles.metaChip}>{vehicleEmoji} {vehicleName}</Text>
-                  {provider.plate && (
-                    <Text style={styles.metaPlate}>{provider.plate}</Text>
-                  )}
+              <View style={s.providerInfo}>
+                <Text style={s.providerName}>{provider.name || 'Driver'}</Text>
+                <View style={s.providerMeta}>
+                  <Text style={s.metaChip}>{vehicleEmoji} {vehicleName}</Text>
+                  {provider.plate && <Text style={s.metaPlate}>{provider.plate}</Text>}
                 </View>
                 {provider.rating && (
-                  <View style={styles.ratingRow}>
-                    <Text style={styles.ratingStar}>⭐</Text>
-                    <Text style={styles.ratingText}>{Number(provider.rating).toFixed(1)}</Text>
+                  <View style={s.ratingRow}>
+                    <Text style={s.ratingStar}>⭐</Text>
+                    <Text style={s.ratingText}>{Number(provider.rating).toFixed(1)}</Text>
                   </View>
                 )}
               </View>
-
-              {/* ETA */}
-              <View style={styles.etaBox}>
-                <Text style={styles.etaValue}>
-                  {provider.eta_minutes ? `${provider.eta_minutes}` : '~10'}
-                </Text>
-                <Text style={styles.etaLabel}>min</Text>
+              <View style={s.etaBox}>
+                <Text style={s.etaValue}>{provider.eta_minutes ? `${provider.eta_minutes}` : '~10'}</Text>
+                <Text style={s.etaLabel}>min</Text>
               </View>
             </View>
 
-            {/* CONTACT BUTTON */}
             {provider.phone && (
-              <TouchableOpacity style={styles.callBtn} onPress={handleCall} activeOpacity={0.8}>
-                <Text style={styles.callBtnEmoji}>📞</Text>
-                <Text style={styles.callBtnText}>Tawagan ang Driver</Text>
+              <TouchableOpacity style={s.callBtn} onPress={handleCall} activeOpacity={0.8}>
+                <Text style={s.callBtnEmoji}>📞</Text>
+                <Text style={s.callBtnText}>Call Driver</Text>
               </TouchableOpacity>
             )}
           </View>
         )}
 
-        {/* TRIP DETAILS */}
-        <View style={styles.tripCard}>
-          <Text style={styles.tripCardTitle}>📋 Detalye ng Biyahe</Text>
-          <View style={styles.tripItem}>
-            <View style={[styles.tripDot, { backgroundColor: '#0F766E' }]} />
+        {/* Trip details */}
+        <View style={s.tripCard}>
+          <Text style={s.tripCardTitle}>📋 Trip Details</Text>
+          <View style={s.tripItem}>
+            <View style={[s.tripDot, { backgroundColor: C.green }]} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.tripLabel}>PICKUP</Text>
-              <Text style={styles.tripValue} numberOfLines={2}>{pickup}</Text>
+              <Text style={s.tripLabel}>PICKUP</Text>
+              <Text style={s.tripValue} numberOfLines={2}>{pickup}</Text>
             </View>
           </View>
-          <View style={styles.tripConnector} />
-          <View style={styles.tripItem}>
-            <View style={[styles.tripDot, { backgroundColor: '#EF4444' }]} />
+          <View style={s.tripConnector} />
+          <View style={s.tripItem}>
+            <View style={[s.tripDot, { backgroundColor: C.red }]} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.tripLabel}>DROPOFF</Text>
-              <Text style={styles.tripValue} numberOfLines={2}>{dropoff}</Text>
+              <Text style={s.tripLabel}>DROPOFF</Text>
+              <Text style={s.tripValue} numberOfLines={2}>{dropoff}</Text>
             </View>
           </View>
-          <View style={styles.tripDivider} />
-          <View style={styles.fareRow}>
-            <Text style={styles.fareLabel}>💰 Fare</Text>
-            <Text style={styles.fareValue}>₱{fare}</Text>
+          <View style={s.tripDivider} />
+          <View style={s.fareRow}>
+            <Text style={s.fareLabel}>💰 Fare</Text>
+            <Text style={s.fareValue}>₱{fare}</Text>
           </View>
-          <View style={styles.payNote}>
-            <Text style={styles.payNoteText}>💳 Bayaran pagkatapos ng ride · Cash o GCash</Text>
+          <View style={s.payNote}>
+            <Text style={s.payNoteText}>💳 Pay after ride · Cash or GCash</Text>
           </View>
         </View>
 
-        {/* CANCEL */}
+        {/* Cancel */}
         {rideStatus === 'accepted' && (
-          <TouchableOpacity
-            style={styles.cancelBtn}
-            onPress={handleCancel}
-            disabled={cancelling}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.cancelBtnText}>
-              {cancelling ? 'Kine-cancel...' : '✕  I-cancel ang Ride'}
+          <TouchableOpacity style={s.cancelBtn} onPress={handleCancel} disabled={cancelling} activeOpacity={0.8}>
+            <Text style={s.cancelBtnText}>
+              {cancelling ? 'Cancelling...' : '✕  Cancel Ride'}
             </Text>
           </TouchableOpacity>
         )}
-
-        <View style={{ height: 32 }} />
       </ScrollView>
+
+      <ConfirmationModal
+        visible={cancelModalVisible}
+        title="Cancel Booking"
+        message="Are you sure you want to cancel this booking? This action cannot be undone."
+        icon="⚠️"
+        confirmText="Yes, Cancel"
+        confirmColor="#EF4444"
+        onConfirm={executeCancel}
+        onCancel={() => setCancelModalVisible(false)}
+        critical={true}
+      />
     </SafeAreaView>
   )
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F0FDFA' },
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: C.bg },
 
-  mapContainer: {
-    height: 240, overflow: 'hidden',
-  },
-  backBtn: {
-    position: 'absolute',
-    top: Platform.OS === 'android' ? 48 : 16,
-    left: 16,
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
-    elevation: 5, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6,
-  },
-  backIcon: { fontSize: 18 },
-  driverMarker: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#0F766E',
-    elevation: 4,
-  },
+  mapContainer: { height: 240, overflow: 'hidden' },
+  homeBtn:      { position: 'absolute', top: Platform.OS === 'android' ? 16 : 16, left: 16, width: 40, height: 40, borderRadius: 20, backgroundColor: C.white, alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6 },
+  homeBtnIcon:  { fontSize: 18 },
+  driverMarker: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.white, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.primary, elevation: 4 },
 
-  sheet: {
-    flex: 1, backgroundColor: '#F0FDFA',
-    paddingHorizontal: 16, paddingTop: 12,
-  },
+  sheet: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
 
-  statusBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    borderRadius: 16, borderWidth: 1,
-    padding: 14, marginBottom: 12,
-  },
-  statusEmoji: { fontSize: 24 },
-  statusLabel: { fontSize: 15, fontWeight: '700' },
-  statusDesc: { fontSize: 12, color: '#64748B', marginTop: 1 },
+  statusBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, padding: 14, marginBottom: 12 },
+  statusEmoji:  { fontSize: 24 },
+  statusLabel:  { fontSize: 15, fontWeight: '700' },
+  statusDesc:   { fontSize: 12, color: C.textSub, marginTop: 1 },
 
-  providerCard: {
-    backgroundColor: '#fff', borderRadius: 18,
-    borderWidth: 1, borderColor: '#CCFBF1',
-    padding: 16, marginBottom: 12,
-  },
-  providerTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
-  avatar: {
-    width: 54, height: 54, borderRadius: 27,
-    backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  },
-  avatarText: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  providerCard: { backgroundColor: C.white, borderRadius: 18, borderWidth: 1, borderColor: C.border, padding: 16, marginBottom: 12 },
+  providerTop:  { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  avatar:       { width: 54, height: 54, borderRadius: 27, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  avatarText:   { fontSize: 18, fontWeight: '700', color: C.white },
   providerInfo: { flex: 1 },
-  providerName: { fontSize: 16, fontWeight: '700', color: '#134E4A', marginBottom: 4 },
+  providerName: { fontSize: 16, fontWeight: '700', color: C.text, marginBottom: 4 },
   providerMeta: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 4 },
-  metaChip: {
-    fontSize: 12, color: '#0F766E', fontWeight: '600',
-    backgroundColor: '#F0FDFA', borderRadius: 10,
-    paddingHorizontal: 8, paddingVertical: 2,
-    borderWidth: 1, borderColor: '#CCFBF1',
-  },
-  metaPlate: { fontSize: 12, color: '#64748B', fontWeight: '600' },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  ratingStar: { fontSize: 12 },
-  ratingText: { fontSize: 12, fontWeight: '700', color: '#D97706' },
-  etaBox: {
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#F0FDFA', borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 10,
-    borderWidth: 1, borderColor: '#CCFBF1',
-    minWidth: 56,
-  },
-  etaValue: { fontSize: 22, fontWeight: '800', color: '#0F766E', lineHeight: 26 },
-  etaLabel: { fontSize: 10, color: '#0F766E', fontWeight: '600' },
-
-  callBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#F0FDFA', borderRadius: 12,
-    paddingVertical: 12, borderWidth: 1, borderColor: '#CCFBF1',
-  },
+  metaChip:     { fontSize: 12, color: C.primary, fontWeight: '600', backgroundColor: C.primaryLt, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: C.primaryMd },
+  metaPlate:    { fontSize: 12, color: C.textSub, fontWeight: '600' },
+  ratingRow:    { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  ratingStar:   { fontSize: 12 },
+  ratingText:   { fontSize: 12, fontWeight: '700', color: '#D97706' },
+  etaBox:       { alignItems: 'center', justifyContent: 'center', backgroundColor: C.primaryLt, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: C.primaryMd, minWidth: 56 },
+  etaValue:     { fontSize: 22, fontWeight: '800', color: C.primary, lineHeight: 26 },
+  etaLabel:     { fontSize: 10, color: C.primary, fontWeight: '600' },
+  callBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.primaryLt, borderRadius: 12, paddingVertical: 12, borderWidth: 1, borderColor: C.primaryMd },
   callBtnEmoji: { fontSize: 16 },
-  callBtnText: { fontSize: 14, fontWeight: '700', color: '#0F766E' },
+  callBtnText:  { fontSize: 14, fontWeight: '700', color: C.primary },
 
-  tripCard: {
-    backgroundColor: '#fff', borderRadius: 18,
-    borderWidth: 1, borderColor: '#CCFBF1',
-    padding: 16, marginBottom: 12,
-  },
-  tripCardTitle: { fontSize: 13, fontWeight: '700', color: '#134E4A', marginBottom: 12 },
-  tripItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  tripDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4, flexShrink: 0 },
-  tripLabel: { fontSize: 10, color: '#94A3B8', fontWeight: '700', letterSpacing: 0.8, marginBottom: 1 },
-  tripValue: { fontSize: 13, color: '#134E4A', fontWeight: '500', lineHeight: 18 },
-  tripConnector: { width: 2, height: 10, backgroundColor: '#CCFBF1', marginLeft: 4, marginVertical: 3 },
-  tripDivider: { height: 1, backgroundColor: '#F0FDFA', marginVertical: 12 },
-  fareRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  fareLabel: { fontSize: 13, color: '#64748B' },
-  fareValue: { fontSize: 20, fontWeight: '800', color: '#0F766E' },
-  payNote: { backgroundColor: '#F0FDFA', borderRadius: 10, padding: 10 },
-  payNoteText: { fontSize: 12, color: '#0F766E' },
+  tripCard:      { backgroundColor: C.white, borderRadius: 18, borderWidth: 1, borderColor: C.border, padding: 16, marginBottom: 12 },
+  tripCardTitle: { fontSize: 13, fontWeight: '700', color: C.text, marginBottom: 12 },
+  tripItem:      { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  tripDot:       { width: 10, height: 10, borderRadius: 5, marginTop: 4, flexShrink: 0 },
+  tripLabel:     { fontSize: 10, color: C.textHint, fontWeight: '700', letterSpacing: 0.8, marginBottom: 1 },
+  tripValue:     { fontSize: 13, color: C.text, fontWeight: '500', lineHeight: 18 },
+  tripConnector: { width: 2, height: 10, backgroundColor: C.border, marginLeft: 4, marginVertical: 3 },
+  tripDivider:   { height: 1, backgroundColor: C.border, marginVertical: 12 },
+  fareRow:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  fareLabel:     { fontSize: 13, color: C.textSub },
+  fareValue:     { fontSize: 20, fontWeight: '800', color: C.primary },
+  payNote:       { backgroundColor: C.primaryLt, borderRadius: 10, padding: 10 },
+  payNoteText:   { fontSize: 12, color: C.primary },
 
-  cancelBtn: {
-    borderWidth: 1.5, borderColor: '#FECACA',
-    borderRadius: 14, paddingVertical: 13, alignItems: 'center',
-    backgroundColor: '#FEF2F2', marginBottom: 8,
-  },
-  cancelBtnText: { color: '#EF4444', fontSize: 14, fontWeight: '700' },
+  cancelBtn:     { borderWidth: 1.5, borderColor: '#FECACA', borderRadius: 14, paddingVertical: 13, alignItems: 'center', backgroundColor: '#FEF2F2', marginBottom: 8 },
+  cancelBtnText: { color: C.red, fontSize: 14, fontWeight: '700' },
 })

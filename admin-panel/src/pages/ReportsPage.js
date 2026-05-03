@@ -3,9 +3,10 @@ import Sidebar from '../components/Sidebar';
 import api from '../services/api';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  LineChart, Line, ResponsiveContainer, PieChart, Pie, Cell
+  LineChart, Line, ResponsiveContainer, Cell
 } from 'recharts';
 import { ShoppingCart, Car, Wrench, Star, Users, Briefcase } from 'lucide-react';
+import StatCard from '../components/StatCard';
 
 const COLORS = {
   pasabuy:  '#3B82F6',
@@ -14,19 +15,6 @@ const COLORS = {
 }
 
 const STATUS_COLORS = ['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444']
-
-const StatCard = ({ label, value, icon: Icon, color, sub }) => (
-  <div className="bg-white rounded-xl shadow p-5 flex items-center gap-4">
-    <div className={`p-3 rounded-full ${color}`}>
-      <Icon size={22} className="text-white" />
-    </div>
-    <div>
-      <p className="text-gray-500 text-sm">{label}</p>
-      <p className="text-2xl font-bold text-gray-800">{value ?? '...'}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
-    </div>
-  </div>
-)
 
 export default function ReportsPage() {
   const [summary, setSummary]       = useState(null)

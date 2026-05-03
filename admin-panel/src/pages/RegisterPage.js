@@ -2,8 +2,6 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../services/api';
 
-const SECRET_CODE = 'gwapaha'; // palitan ng gusto mo
-
 export default function RegisterPage() {
   const [form, setForm] = useState({ full_name: '', email: '', password: '', secret_code: '' });
   const [error, setError] = useState('');
@@ -14,11 +12,6 @@ export default function RegisterPage() {
     e.preventDefault();
     setError('');
 
-    if (form.secret_code !== SECRET_CODE) {
-      setError('Invalid admin secret code.');
-      return;
-    }
-
     setLoading(true);
     try {
       await api.post('/auth/register', {
@@ -26,6 +19,7 @@ export default function RegisterPage() {
         email: form.email,
         password: form.password,
         role: 'admin',
+        secret_code: form.secret_code,
       });
       navigate('/login');
     } catch (err) {

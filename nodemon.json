@@ -1,0 +1,6 @@
+{
+  "watch": ["server.js", "src/"],
+  "ext": "js,json",
+  "ignore": ["frontend-mobile/", "node_modules/", "uploads/", ".expo/"],
+  "exec": "node server.js"
+}
